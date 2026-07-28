@@ -1,0 +1,51 @@
+schema_version = 1
+repository = "zoltsh/releases"
+visibility = "public"
+default_branch = "main"
+base_permission = "none"
+workflow_token_default = "read"
+actions_may_approve_pull_requests = false
+immutable_releases = true
+
+[main_rules]
+pull_request_required = true
+required_approvals = 2
+code_owner_review_required = true
+latest_push_approval_required = true
+conversations_resolved = true
+force_push_allowed = false
+deletion_allowed = false
+normal_bypass_allowed = false
+
+[actions]
+full_sha_pinning_required = true
+self_hosted_privileged_release_runners = false
+
+[environments.channel_zap]
+reviewers = 0
+
+[environments.channel_preview]
+reviewers = 0
+
+[environments.channel_stable]
+reviewers = 1
+prevent_self_review = true
+admin_bypass = false
+
+[tag_rules.zap]
+pattern = "zolt-zap-*"
+creation = "trusted-publisher-only"
+update_allowed = false
+deletion_allowed = false
+
+[tag_rules.preview]
+pattern = "zolt-preview-*"
+creation = "trusted-publisher-only"
+update_allowed = false
+deletion_allowed = false
+
+[tag_rules.stable]
+pattern = "zolt-v*"
+creation = "trusted-publisher-only"
+update_allowed = false
+deletion_allowed = false

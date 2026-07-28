@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -n "${ZOLT_BIN:-}" ]]; then
+    cd "$root"
+    exec "$ZOLT_BIN" "$@"
+fi
+
+bootstrap_root="${ZOLT_BOOTSTRAP_ROOT:-${root}/.zolt-bootstrap/source}"
+bootstrap_script="${bootstrap_root}/scripts/bootstrap-zolt-jvm"
+bootstrap_jar="${bootstrap_root}/build/bootstrap-zolt/zolt-bootstrap.jar"
+bootstrap_cache="${ZOLT_BOOTSTRAP_CACHE_ROOT:-${bootstrap_root}/.zolt/cache}"
+
+if [[ ! -x "$bootstrap_script" ]]; then
+    if command -v zolt >/dev/null 2>&1; then
+        cd "$root"
+        exec zolt "$@"
+    fi
+    printf 'error: zolt is not installed and the trusted bootstrap checkout is missing\n' >&2
+    printf 'hint: install zolt, set ZOLT_BIN, or set ZOLT_BOOTSTRAP_ROOT\n' >&2
+    exit 1
+fi
+
+if [[ ! -f "$bootstrap_jar" ]]; then
+    (
+        cd "$bootstrap_root"
+        ZOLT_CACHE_ROOT="$bootstrap_cache" "$bootstrap_script" --version >/dev/null
+    )
+fi
+
+classpath="$bootstrap_jar"
+while IFS= read -r jar_path; do
+    artifact="${bootstrap_cache}/${jar_path}"
+    if [[ ! -f "$artifact" ]]; then
+        printf 'error: trusted Zolt bootstrap dependency is missing: %s\n' "$artifact" >&2
+        exit 1
+    fi
+    classpath="${classpath}:${artifact}"
+done < <(
+    awk '
+      /^\[\[package\]\]/ {
+        scope = ""
+        jar = ""
+      }
+      /^scope = / {
+        scope = $3
+        gsub(/"/, "", scope)
+      }
+      /^jar = / {
+        jar = $3
+        gsub(/"/, "", jar)
+      }
+      /^jarSha256 = / {
+        if (scope != "test" && jar != "") {
+          print jar
+        }
+      }
+    ' "${bootstrap_root}/zolt.lock"
+)
+
+cd "$root"
+exec java -cp "$classpath" sh.zolt.cli.ZoltCli "$@"

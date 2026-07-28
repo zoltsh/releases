@@ -1,0 +1,83 @@
+# Release incident runbooks
+
+[README](../README.md) · [Architecture](./ARCHITECTURE.md) ·
+[Repository setup](./SETUP.md) · [Security](../SECURITY.md)
+
+Use these procedures when a release fails or release authority may be compromised.
+
+> [!CAUTION]
+> Preserve workflow logs, audit events, release records, file identities, and external
+> deployment IDs before changing anything.
+
+> [!IMPORTANT]
+> Add the real account, key, bucket, and contact details before publication is enabled.
+
+## First response
+
+| Signal | First action | Continue with |
+| :--- | :--- | :--- |
+| Zap build or verification fails | Leave the current zap release in place | [Zap failure](#zap-failure) |
+| Preview publication fails | Stop before changing the channel | [Preview failure](#preview-failure) |
+| Stable publication fails | Stop publication and preserve approval evidence | [Stable failure](#stable-failure) |
+| Channel credential may be exposed | Disable that channel | [Channel credential exposure](#channel-credential-exposure) |
+| Offline root key may be exposed | Stop every publication path | [Offline root key exposure](#offline-root-key-exposure) |
+| Release repository may be compromised | Freeze the repository and revoke credentials | [Repository compromise](#repository-compromise) |
+
+## Zap failure
+
+1. Do not change the zap channel if the build, checks, or file smokes fail.
+2. Leave the previous zap release current.
+3. If files were uploaded but the channel did not change, leave them unreferenced until
+   the cleanup job removes the whole release.
+4. If the channel changed to a bad release, publish a new signed channel file with a
+   higher sequence number that points to the last good release.
+5. Keep the logs and release record.
+
+## Preview failure
+
+1. Stop before changing the preview channel when possible.
+2. Do not replace files in an immutable prerelease.
+3. Fix the problem and publish a new prerelease version.
+4. If needed, publish a new signed channel file with a higher sequence number that
+   points to the previous good release.
+
+## Stable failure
+
+1. Stop stable publication.
+2. Keep the source tag, GitHub draft or release ID, file IDs, checksums, approval, and
+   external deployment IDs.
+3. Do not rebuild the same version after approval.
+4. If publication stopped halfway, continue from the recorded and already-verified
+   files.
+5. If a bad stable release is current, publish a new signed channel file with a higher
+   sequence number that points to a verified older release.
+6. Mark the bad version withdrawn or unsupported. Do not erase its evidence.
+
+## Channel credential exposure
+
+1. Disable that channel's workflow and environment.
+2. Revoke its storage credential and signing key.
+3. Check whether the other channels were reachable.
+4. Use the offline root process to authorize a replacement channel key.
+5. Publish a new key-authority document and channel file, both with higher sequence or
+   generation numbers.
+6. Check that existing clients can move to the new key.
+7. Publish an incident report appropriate to the impact.
+
+## Offline root key exposure
+
+Stop all publication. This breaks the base of client trust and may require a new Zolt
+release plus recovery instructions delivered through another trusted path.
+
+The root private key must never be stored in GitHub, DigitalOcean, an ordinary cloud
+drive, or an unprotected maintainer laptop. Keep it hardware protected with a separate
+offline backup.
+
+## Repository compromise
+
+1. Freeze `zoltsh/releases` and revoke active publication credentials.
+2. Keep GitHub audit events and workflow logs.
+3. Compare controller commits with reviewed commits and signed release records.
+4. Rotate every operational secret that an affected workflow could read.
+5. Restore trusted controller code through reviewed commits.
+6. Require an independent review before stable publication resumes.

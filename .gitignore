@@ -1,0 +1,6 @@
+.DS_Store
+.zolt/
+.zolt-bootstrap/
+candidate/
+out/
+target/

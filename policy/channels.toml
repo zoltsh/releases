@@ -1,0 +1,53 @@
+schema_version = 1
+
+[repositories]
+controller = "zoltsh/releases"
+asset_repository = "zoltsh/releases"
+primary_source = "zoltsh/zolt"
+allowed_sources = ["zoltsh/zolt"]
+source_branch = "main"
+
+[release]
+default_channel = "stable"
+large_artifact_backend = "github-releases"
+metadata_backend = "s3-compatible"
+production_ci_follows_channel = false
+
+[channel.stable]
+status = "disabled"
+default = true
+source = "protected-final-tag"
+human_gate = "protected-environment"
+approval_count = 1
+origin = "https://dist.zolt.sh"
+bucket = "zolt-channel-stable"
+signing_key_id = "zolt-stable-2026"
+retention = "permanent"
+publish_central = false
+publish_homebrew = false
+
+[channel.preview]
+status = "disabled"
+default = false
+source = "protected-prerelease-tag"
+human_gate = "tag-creation"
+approval_count = 0
+origin = "https://preview.dist.zolt.sh"
+bucket = "zolt-channel-preview"
+signing_key_id = "zolt-preview-2026"
+retention = "bounded"
+publish_central = false
+publish_homebrew = false
+
+[channel.zap]
+status = "candidate"
+default = false
+source = "healthy-main-commit"
+human_gate = "none"
+approval_count = 0
+origin = "https://zap.dist.zolt.sh"
+bucket = "zolt-channel-zap"
+signing_key_id = "zolt-zap-2026"
+retention = "bounded"
+publish_central = false
+publish_homebrew = false

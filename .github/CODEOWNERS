@@ -1,0 +1,9 @@
+# Protect the trust boundary and this file itself.
+* @zoltsh/release-engineers
+
+/.github/ @zoltsh/release-engineers
+/policy/ @zoltsh/release-engineers
+/schemas/ @zoltsh/release-engineers
+/scripts/ @zoltsh/release-engineers
+/docs/RUNBOOKS.md @zoltsh/release-engineers
+/.github/CODEOWNERS @zoltsh/release-engineers

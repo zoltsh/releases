@@ -1,0 +1,236 @@
+name: zap candidate
+run-name: zap candidate ${{ inputs.source_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Allowlisted Zolt source repository
+        required: true
+        type: string
+      source_sha:
+        description: Exact 40-character source commit on main
+        required: true
+        type: string
+      source_run_id:
+        description: Successful source CI workflow run that dispatched this build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-candidate-${{ inputs.source_repository }}-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate-intent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_repository: ${{ steps.intent.outputs.source_repository }}
+      source_sha: ${{ steps.intent.outputs.source_sha }}
+      source_run_id: ${{ steps.intent.outputs.source_run_id }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Validate zap intent
+        id: intent
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -eu
+          scripts/zoltw run --quiet -- validate-intent \
+              --channel zap \
+              --source-repository "$SOURCE_REPOSITORY" \
+              --source-sha "$SOURCE_SHA" \
+              --source-run-id "$SOURCE_RUN_ID"
+          {
+              printf 'source_repository=%s\n' "$SOURCE_REPOSITORY"
+              printf 'source_sha=%s\n' "$SOURCE_SHA"
+              printf 'source_run_id=%s\n' "$SOURCE_RUN_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Independently verify source CI evidence
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          ZOLT_SOURCE_READ_TOKEN: ${{ github.token }}
+        run: |
+          scripts/zoltw run --quiet -- verify-source-run \
+              --repository "$SOURCE_REPOSITORY" \
+              --source-sha "$SOURCE_SHA" \
+              --run-id "$SOURCE_RUN_ID" \
+              --output out/source-run.json
+          cat out/source-run.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fetch exact source commit
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          git init source
+          git -C source remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
+          git -C source fetch --no-tags --depth=256 origin refs/heads/main:refs/remotes/origin/main
+          if ! git -C source cat-file -e "${SOURCE_SHA}^{commit}" 2>/dev/null; then
+              git -C source fetch --no-tags --depth=1 origin "$SOURCE_SHA"
+          fi
+          git -C source merge-base --is-ancestor "$SOURCE_SHA" refs/remotes/origin/main
+          git -C source checkout --detach "$SOURCE_SHA"
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Compute one deterministic zap version
+        id: version
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          source_created_at="$(jq -er '.runCreatedAt' out/source-run.json)"
+          version="$(scripts/zoltw run --quiet -- compute-zap-version \
+              --project source/apps/zolt/zolt.toml \
+              --source-sha "$SOURCE_SHA" \
+              --source-created-at "$source_created_at")"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'Zap version: \x60%s\x60\n' "$version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve source CI evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: zolt-source-ci-evidence
+          path: out/source-run.json
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: validate-intent
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-arm64
+            runner: macos-15
+          - target: macos-x64
+            runner: macos-15-intel
+
+    env:
+      SOURCE_REPOSITORY: ${{ needs.validate-intent.outputs.source_repository }}
+      SOURCE_SHA: ${{ needs.validate-intent.outputs.source_sha }}
+      ZOLT_RELEASE_TARGET: ${{ matrix.target }}
+      ZOLT_RELEASE_VERSION: ${{ needs.validate-intent.outputs.version }}
+
+    steps:
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@bef4b0e916c7dd079bf60fb95d49139f67e32c5f
+        with:
+          distribution: graalvm
+          java-version: '21'
+          components: native-image
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch exact source commit
+        run: |
+          set -euo pipefail
+          git init source
+          git -C source remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
+          git -C source fetch --no-tags --depth=256 origin refs/heads/main:refs/remotes/origin/main
+          if ! git -C source cat-file -e "${SOURCE_SHA}^{commit}" 2>/dev/null; then
+              git -C source fetch --no-tags --depth=1 origin "$SOURCE_SHA"
+          fi
+          git -C source merge-base --is-ancestor "$SOURCE_SHA" refs/remotes/origin/main
+          git -C source checkout --detach "$SOURCE_SHA"
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Build and verify native zap distribution
+        working-directory: source
+        run: scripts/zap-distribution --target "$ZOLT_RELEASE_TARGET"
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: zolt-zap-${{ matrix.target }}
+          path: source/apps/zolt/target/release/zap/${{ needs.validate-intent.outputs.version }}/**
+          if-no-files-found: error
+          retention-days: 7
+
+  record:
+    name: candidate record
+    needs:
+      - validate-intent
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Download exact candidate artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: zolt-zap-*
+          path: candidate
+          merge-multiple: false
+          digest-mismatch: error
+
+      - name: Download source CI evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: zolt-source-ci-evidence
+          path: evidence
+          digest-mismatch: error
+
+      - name: Write candidate release record
+        env:
+          SOURCE_REPOSITORY: ${{ needs.validate-intent.outputs.source_repository }}
+          SOURCE_SHA: ${{ needs.validate-intent.outputs.source_sha }}
+          SOURCE_RUN_ID: ${{ needs.validate-intent.outputs.source_run_id }}
+          EXPECTED_VERSION: ${{ needs.validate-intent.outputs.version }}
+        run: |
+          scripts/zoltw run --quiet -- write-release-record \
+              --channel zap \
+              --source-repository "$SOURCE_REPOSITORY" \
+              --source-sha "$SOURCE_SHA" \
+              --source-run-id "$SOURCE_RUN_ID" \
+              --expected-version "$EXPECTED_VERSION" \
+              --source-evidence evidence/source-run.json \
+              --controller-sha "$GITHUB_SHA" \
+              --controller-run-id "$GITHUB_RUN_ID" \
+              --candidates candidate \
+              --output out/release-record.json
+          cat out/release-record.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload candidate release record
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: zolt-zap-release-record
+          path: out/release-record.json
+          if-no-files-found: error
+          retention-days: 14

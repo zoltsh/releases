@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+"${root}/scripts/zoltw" clean --quiet --no-progress --color never
+"${root}/scripts/zoltw" test --no-progress --color never
+"${root}/scripts/zoltw" package --quiet --no-progress --color never
+"${root}/scripts/zoltw" check --context ci --no-progress --color never
+"${root}/scripts/zoltw" run-package --quiet --no-progress --color never -- validate-repository

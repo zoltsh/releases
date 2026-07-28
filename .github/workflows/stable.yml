@@ -1,0 +1,49 @@
+name: stable intent
+run-name: stable intent ${{ inputs.source_tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Allowlisted Zolt source repository
+        required: true
+        type: string
+      source_sha:
+        description: Exact 40-character source commit
+        required: true
+        type: string
+      source_tag:
+        description: Protected final tag, such as v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-intent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Validate stable intent
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+        run: |
+          scripts/zoltw run --quiet -- validate-intent \
+              --channel stable \
+              --source-repository "$SOURCE_REPOSITORY" \
+              --source-sha "$SOURCE_SHA" \
+              --source-tag "$SOURCE_TAG" \
+              --allow-disabled
+          printf 'Stable publication is disabled. This workflow validates intent only.\n' >> "$GITHUB_STEP_SUMMARY"
