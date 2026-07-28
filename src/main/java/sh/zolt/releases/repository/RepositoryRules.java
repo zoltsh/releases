@@ -11,13 +11,17 @@ final class RepositoryRules {
             Pattern.compile("^\\s*-?\\s*uses:\\s*['\"]?([^'\"\\s#]+)", Pattern.MULTILINE);
     static final Pattern TOP_LEVEL_PERMISSIONS =
             Pattern.compile("^permissions:\\s*(?:\\{\\}|$)", Pattern.MULTILINE);
-    static final Pattern PINNED_ZOLT = Pattern.compile("ref:\\s*[0-9a-f]{40}");
+    static final Pattern PINNED_ZOLT_ARCHIVE = Pattern.compile(
+            "ZOLT_ARCHIVE_URL:\\s*https://dist\\.zolt\\.sh/artifacts/zap/"
+                    + "[^/\\s]+/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
+    static final Pattern PINNED_ZOLT_CHECKSUM =
+            Pattern.compile("ZOLT_ARCHIVE_SHA256:\\s*[0-9a-f]{64}");
     static final Pattern OTHER_TOOLCHAIN = Pattern.compile(
             "\\b(?:python3?|node|npm|typescript)\\b|\\.py\\b|\\.ts\\b|\\bunittest\\b",
             Pattern.CASE_INSENSITIVE);
 
     static final Set<String> IGNORED_DIRECTORIES =
-            Set.of(".git", ".zolt", ".zolt-bootstrap", "candidate", "node_modules", "out", "target");
+            Set.of(".git", ".zolt", "candidate", "node_modules", "out", "target");
     static final Set<String> TEXT_EXTENSIONS =
             Set.of("", ".json", ".md", ".sh", ".toml", ".yaml", ".yml");
     static final Set<String> BINARY_EXTENSIONS =
@@ -47,7 +51,6 @@ final class RepositoryRules {
             "schemas/release-record-v1.schema.json",
             "scripts/bootstrap.sh",
             "scripts/check",
-            "scripts/zoltw",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml",
             "src/main/java/sh/zolt/releases/cli/ReleaseController.java",

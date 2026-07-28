@@ -213,8 +213,9 @@ instead of a source `v*` tag.
 
 ## Trusted build tool
 
-The controller is a Java project built and tested by Zolt. Its workflows check out a
-reviewed Zolt revision pinned in `.github/actions/setup-zolt/action.yml`.
+The controller is a Java project built and tested by Zolt. Its workflows install one
+exact native Zolt archive pinned by URL and SHA-256 in
+`.github/actions/setup-zolt/action.yml`.
 
 The controller code is split by responsibility:
 
@@ -230,12 +231,12 @@ The controller code is split by responsibility:
 | `core` | Shared release constants |
 
 That pin is part of the controller, not an input from the source workflow. A candidate
-commit cannot choose the Zolt version that validates it. Update the pin through the
-same two-review process as any other controller change. After the first stable release,
-prefer the previous trusted Zolt release when preparing the next one.
+commit cannot choose the Zolt version that validates it. Update the archive and
+checksum through the same two-review process as any other controller change. After the
+first stable release, prefer the previous trusted Zolt release when preparing the next
+one.
 
-`scripts/zoltw` uses an installed Zolt locally. In CI it builds the pinned checkout
-once, then reuses that process for the remaining controller commands.
+Every controller command calls the installed `zolt` binary directly.
 
 ## Source handoff
 

@@ -51,7 +51,7 @@ jobs:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         run: |
           set -eu
-          scripts/zoltw run --quiet -- validate-intent \
+          zolt run --quiet -- validate-intent \
               --channel zap \
               --source-repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \
@@ -69,7 +69,7 @@ jobs:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           ZOLT_SOURCE_READ_TOKEN: ${{ github.token }}
         run: |
-          scripts/zoltw run --quiet -- verify-source-run \
+          zolt run --quiet -- verify-source-run \
               --repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \
               --run-id "$SOURCE_RUN_ID" \
@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           source_created_at="$(jq -er '.runCreatedAt' out/source-run.json)"
-          version="$(scripts/zoltw run --quiet -- compute-zap-version \
+          version="$(zolt run --quiet -- compute-zap-version \
               --project source/apps/zolt/zolt.toml \
               --source-sha "$SOURCE_SHA" \
               --source-created-at "$source_created_at")"
@@ -214,7 +214,7 @@ jobs:
           SOURCE_RUN_ID: ${{ needs.validate-intent.outputs.source_run_id }}
           EXPECTED_VERSION: ${{ needs.validate-intent.outputs.version }}
         run: |
-          scripts/zoltw run --quiet -- write-release-record \
+          zolt run --quiet -- write-release-record \
               --channel zap \
               --source-repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \

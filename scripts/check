@@ -2,9 +2,16 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
 
-"${root}/scripts/zoltw" clean --quiet --no-progress --color never
-"${root}/scripts/zoltw" test --no-progress --color never
-"${root}/scripts/zoltw" package --quiet --no-progress --color never
-"${root}/scripts/zoltw" check --context ci --no-progress --color never
-"${root}/scripts/zoltw" run-package --quiet --no-progress --color never -- validate-repository
+if ! command -v zolt >/dev/null 2>&1; then
+    printf 'error: zolt is required on PATH\n' >&2
+    exit 1
+fi
+
+zolt resolve --locked --quiet --no-progress --color never
+zolt clean --quiet --no-progress --color never
+zolt test --no-progress --color never
+zolt package --quiet --no-progress --color never
+zolt check --context ci --no-progress --color never
+zolt run-package --quiet --no-progress --color never -- validate-repository

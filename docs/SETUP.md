@@ -15,7 +15,7 @@ repository.
 You need:
 
 - GitHub CLI authenticated as an owner of `zoltsh`
-- a trusted Zolt executable on `PATH`, or its path in `ZOLT_BIN`
+- a native Zolt binary on `PATH`
 - access to create organization teams, rulesets, environments, and a GitHub App
 
 If Git uses a custom SSH host, set `ZOLT_RELEASES_REMOTE` to the complete repository
@@ -89,9 +89,9 @@ At the organization and repository levels:
 
 The repository test suite rejects unpinned actions.
 
-The local `setup-zolt` action also pins the Zolt source revision used to build the
-controller. Review that pin like a dependency update. It must not come from workflow
-input or the candidate commit.
+The local `setup-zolt` action pins the exact native Zolt archive and its SHA-256.
+Review both values like a dependency update. They must not come from workflow input
+or the candidate commit.
 
 ## 5. Configure environments
 

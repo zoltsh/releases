@@ -40,7 +40,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
           SOURCE_TAG: ${{ inputs.source_tag }}
         run: |
-          scripts/zoltw run --quiet -- validate-intent \
+          zolt run --quiet -- validate-intent \
               --channel preview \
               --source-repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \

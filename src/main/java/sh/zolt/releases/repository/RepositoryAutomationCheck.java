@@ -4,7 +4,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Matcher;
-import sh.zolt.releases.core.ReleaseConstants;
 import sh.zolt.releases.io.ProjectFiles;
 
 final class RepositoryAutomationCheck implements RepositoryCheck {
@@ -61,11 +60,9 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
 
         String setup =
                 RepositoryFiles.read(root.resolve(".github/actions/setup-zolt/action.yml"));
-        if (!setup.contains("repository: " + ReleaseConstants.SOURCE_REPOSITORY)
-                || !RepositoryRules.PINNED_ZOLT.matcher(setup).find()) {
-            errors.add(
-                    "Zolt setup must pin " + ReleaseConstants.SOURCE_REPOSITORY
-                            + " to a full commit SHA");
+        if (!RepositoryRules.PINNED_ZOLT_ARCHIVE.matcher(setup).find()
+                || !RepositoryRules.PINNED_ZOLT_CHECKSUM.matcher(setup).find()) {
+            errors.add("Zolt setup must pin an exact native archive and SHA-256");
         }
 
         String dispatcher =
