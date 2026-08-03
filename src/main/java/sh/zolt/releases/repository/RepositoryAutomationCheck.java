@@ -204,9 +204,18 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("GitHub Release publisher must not upload release assets to object storage");
             }
         }
-        if (Files.isRegularFile(metadataPublisher)
-                && RepositoryFiles.read(metadataPublisher).contains("artifacts/")) {
-            errors.add("channel metadata publisher must not upload release artifacts");
+        if (Files.isRegularFile(metadataPublisher)) {
+            String publisher = RepositoryFiles.read(metadataPublisher);
+            if (publisher.contains("artifacts/")) {
+                errors.add("channel metadata publisher must not upload release artifacts");
+            }
+            if (!publisher.contains("--aws-sigv4 \"aws:amz:nyc3:s3\"")
+                    || !publisher.contains("--connect-timeout")
+                    || !publisher.contains("--max-time")
+                    || publisher.contains("s3api")) {
+                errors.add(
+                        "channel metadata publisher must use bounded curl SigV4 requests to Spaces");
+            }
         }
     }
 }

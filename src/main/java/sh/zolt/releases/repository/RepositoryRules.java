@@ -140,7 +140,6 @@ final class RepositoryRules {
             "verify-release-file",
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json",
-            "AWS_MAX_ATTEMPTS: \"1\"",
             "Verify public zap recovery");
     static final List<String> FORBIDDEN_DISPATCHER_FRAGMENTS = List.of(
             "permission-contents: write",

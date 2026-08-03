@@ -97,6 +97,19 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void metadataPublisherMustUseBoundedCurlSigV4(@TempDir Path root) throws IOException {
+        Path publisher = root.resolve("scripts/publish-channel-metadata");
+        Files.createDirectories(publisher.getParent());
+        Files.writeString(publisher, "aws s3api get-object --bucket zolt-dist\n");
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "channel metadata publisher must use bounded curl SigV4 requests to Spaces"));
+    }
+
+    @Test
     void zapRecoveryMustRequireAnImmutableRelease(@TempDir Path root) throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-recover.yml");
         Files.createDirectories(workflow.getParent());

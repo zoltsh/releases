@@ -48,13 +48,17 @@ fi
 publication="$(cd "$publication" && pwd)"
 expected_current_channel="$(cd "$(dirname "$expected_current_channel")" && pwd)/$(basename "$expected_current_channel")"
 
-aws_cli="${ZOLT_PUBLISH_AWS:-aws}"
-if ! command -v "$aws_cli" >/dev/null 2>&1; then
-    printf 'error: channel publication requires the AWS CLI on PATH\n' >&2
+curl_cli="${ZOLT_PUBLISH_CURL:-curl}"
+if ! command -v "$curl_cli" >/dev/null 2>&1; then
+    printf 'error: channel publication requires curl on PATH\n' >&2
     exit 2
 fi
 if ! command -v jq >/dev/null 2>&1; then
     printf 'error: channel publication requires jq on PATH\n' >&2
+    exit 2
+fi
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    printf 'error: channel publication requires Spaces access credentials\n' >&2
     exit 2
 fi
 
@@ -86,11 +90,21 @@ for sidecar in "$channel_signature" "$index_signature"; do
     fi
 done
 
-aws() {
-    "$aws_cli" \
-        --endpoint-url "$endpoint" \
-        --cli-connect-timeout "${ZOLT_PUBLISH_CONNECT_TIMEOUT_SECONDS:-10}" \
-        --cli-read-timeout "${ZOLT_PUBLISH_READ_TIMEOUT_SECONDS:-30}" \
+spaces_url() {
+    printf '%s/%s/%s' "$endpoint" "$bucket" "$1"
+}
+
+spaces_curl() {
+    "$curl_cli" \
+        --proto '=https' \
+        --tlsv1.2 \
+        --fail \
+        --silent \
+        --show-error \
+        --connect-timeout "${ZOLT_PUBLISH_CONNECT_TIMEOUT_SECONDS:-10}" \
+        --max-time "${ZOLT_PUBLISH_TOTAL_TIMEOUT_SECONDS:-30}" \
+        --aws-sigv4 "aws:amz:nyc3:s3" \
+        --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
         "$@"
 }
 
@@ -98,7 +112,7 @@ download_object() {
     local key="$1"
     local output="$2"
     printf 'Reading s3://%s/%s\n' "$bucket" "$key"
-    aws s3api get-object --bucket "$bucket" --key "$key" "$output" >/dev/null
+    spaces_curl --output "$output" "$(spaces_url "$key")"
 }
 
 verify_remote_bytes() {
@@ -124,13 +138,14 @@ publish_metadata() {
     local key="$2"
     local content_type="$3"
     printf 'Writing s3://%s/%s\n' "$bucket" "$key"
-    aws s3api put-object \
-        --bucket "$bucket" \
-        --key "$key" \
-        --body "$file" \
-        --acl public-read \
-        --cache-control "$mutable_cache" \
-        --content-type "$content_type" >/dev/null
+    spaces_curl \
+        --request PUT \
+        --upload-file "$file" \
+        --header 'x-amz-acl: public-read' \
+        --header "Cache-Control: $mutable_cache" \
+        --header "Content-Type: $content_type" \
+        --output /dev/null \
+        "$(spaces_url "$key")"
     verify_remote_bytes "$file" "$key"
 }
 

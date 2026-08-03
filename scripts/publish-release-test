@@ -321,57 +321,72 @@ if scripts/publish-github-release \
 fi
 grep -F 'GitHub Release asset differs from staged bytes' "$temporary/tamper.log" >/dev/null
 
-fake_aws="$temporary/aws"
+fake_curl="$temporary/curl"
 spaces_store="$temporary/spaces"
 spaces_log="$temporary/spaces.log"
 mkdir -p "$spaces_store/zolt-dist/channels"
-cat >"$fake_aws" <<'FAKE_AWS'
+cat >"$fake_curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
 set -euo pipefail
-while [[ "$1" == "--endpoint-url" \
-    || "$1" == "--cli-connect-timeout" \
-    || "$1" == "--cli-read-timeout" ]]; do
-    shift 2
-done
-[[ "$1" == "s3api" ]]
-operation="$2"
-shift 2
-bucket=""
-key=""
-body=""
+method="GET"
 output=""
+upload=""
+url=""
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --bucket) bucket="$2"; shift 2 ;;
-        --key) key="$2"; shift 2 ;;
-        --body) body="$2"; shift 2 ;;
-        --acl | --cache-control | --content-type) shift 2 ;;
-        *) output="$1"; shift ;;
+        --proto | --connect-timeout | --max-time | --aws-sigv4 | --user | --header)
+            shift 2
+            ;;
+        --tlsv1.2 | --fail | --silent | --show-error)
+            shift
+            ;;
+        --request)
+            method="$2"
+            shift 2
+            ;;
+        --upload-file)
+            upload="$2"
+            shift 2
+            ;;
+        --output)
+            output="$2"
+            shift 2
+            ;;
+        https://*)
+            url="$1"
+            shift
+            ;;
+        *)
+            exit 2
+            ;;
     esac
 done
-path="$ZOLT_FAKE_AWS_ROOT/$bucket/$key"
-case "$operation" in
-    get-object)
+relative="${url#https://nyc3.digitaloceanspaces.com/}"
+key="${relative#zolt-dist/}"
+path="$ZOLT_FAKE_SPACES_ROOT/$relative"
+case "$method" in
+    GET)
         [[ -f "$path" ]]
         cp "$path" "$output"
-        printf '{}\n'
         ;;
-    put-object)
+    PUT)
         mkdir -p "$(dirname "$path")"
-        cp "$body" "$path"
-        printf '%s\n' "$key" >>"$ZOLT_FAKE_AWS_LOG"
-        printf '{}\n'
+        cp "$upload" "$path"
+        printf '%s\n' "$key" >>"$ZOLT_FAKE_SPACES_LOG"
         ;;
     *) exit 2 ;;
 esac
-FAKE_AWS
-chmod +x "$fake_aws"
+FAKE_CURL
+chmod +x "$fake_curl"
 previous="$temporary/previous-channel.json"
 printf '{"version":"previous"}\n' >"$previous"
 cp "$previous" "$spaces_store/zolt-dist/channels/zap.json"
-export ZOLT_FAKE_AWS_ROOT="$spaces_store"
-export ZOLT_FAKE_AWS_LOG="$spaces_log"
-export ZOLT_PUBLISH_AWS="$fake_aws"
+export ZOLT_FAKE_SPACES_ROOT="$spaces_store"
+export ZOLT_FAKE_SPACES_LOG="$spaces_log"
+export ZOLT_PUBLISH_CURL="$fake_curl"
+export AWS_ACCESS_KEY_ID="test-access-key"
+printf -v AWS_SECRET_ACCESS_KEY '%s' "test-secret-key"
+export AWS_SECRET_ACCESS_KEY
 scripts/publish-channel-metadata \
     --channel zap \
     --publication "$zap_publication" \
