@@ -7,8 +7,8 @@ This document describes how Zolt turns trusted source into immutable releases wi
 giving candidate code access to publication credentials.
 
 > [!NOTE]
-> Candidate builds are implemented. Publication remains disabled until its signing,
-> storage, and recovery requirements are complete.
+> Automatic zap publication is implemented against the existing `dist.zolt.sh`
+> distribution. Preview and stable publication remain disabled.
 
 ## Contents
 
@@ -40,9 +40,9 @@ zoltsh/releases
   verify the files
   publish through a separate trusted job
         |
-        +--> GitHub Releases: binaries and evidence
+        +--> DigitalOcean Spaces: immutable version files
         |
-        +--> signed channel file: which release is current
+        +--> signed channel and release index: which release is current
 ```
 
 This separation means a source maintainer can trigger a zap build without gaining
@@ -68,45 +68,41 @@ preview or stable release access.
 Zap stays automatic. Preview requires a deliberate tag. Stable adds one protected
 approval.
 
-The three public origins are:
+Zap currently uses the existing public origin:
 
 ```text
 https://dist.zolt.sh
-https://preview.dist.zolt.sh
-https://zap.dist.zolt.sh
 ```
 
-`https://dist.zolt.sh/install.sh` is the normal installer. Choosing preview or zap
-changes where the installer reads channel metadata.
+The stable and preview origins are not enabled. Before either channel is enabled, its
+storage, signing key, and public origin must be defined and isolated from zap.
+
+`https://dist.zolt.sh/install.sh` is the current installer. Until stable exists, it
+follows `channels/zap.json`.
 
 ## Storage
 
-| Location | Stores |
-| :--- | :--- |
-| GitHub Releases | Native archives, checksums, manifests, SBOMs, provenance, and release records |
-| DigitalOcean Spaces | Small signed channel metadata |
-
-GitHub release immutability applies to every channel, including zap. An old zap release
-may be deleted only as a whole after nothing points to it. Its files are never replaced,
-and its tag is never reused.
-
-DigitalOcean Spaces stores only small channel metadata. It has three buckets:
+Zap uses one DigitalOcean Space in `nyc3`:
 
 ```text
-zolt-channel-stable
-zolt-channel-preview
-zolt-channel-zap
+bucket: zolt-dist
+origin: https://dist.zolt.sh
 ```
 
-Each bucket has its own write credential, signing key, GitHub environment, and DNS
-origin. A zap credential cannot write preview or stable metadata.
+The Space stores versioned archives, checksum sidecars, the combined release manifest,
+the candidate release record, source-CI evidence, and the two signed mutable files.
+Versioned objects live under `artifacts/zap/<version>/` and are never replaced with
+different bytes. The publisher reads an existing object back and refuses any digest
+mismatch. The Space must have object versioning enabled for recovery from an
+out-of-band administrative overwrite.
 
-Enable object versioning on all three buckets. Keep bucket listings private and expose
-only the required metadata files. The buckets are not the source of truth; signed
-release records and immutable GitHub files must be enough to rebuild channel state.
+The mutable files are `channels/zap.json` and `releases/zap.json`, each with an
+Ed25519 `.sig` sidecar. The publisher writes every immutable object first, the release
+index pair next, the channel signature next, and `channels/zap.json` last.
 
-Large release files never go in Spaces. GitHub serves the bandwidth-heavy downloads;
-the buckets remain small and inexpensive.
+This single-Space layout is the initial zap topology, not permission sharing for future
+channels. Preview and stable must get separately reviewed storage and credentials before
+their policy status changes from `disabled`.
 
 ## Roles and access
 
@@ -258,7 +254,7 @@ This repository does not trust the trigger by itself. It checks:
 
 ## Job boundaries
 
-Candidate code never runs with preview or stable credentials.
+Candidate code never runs with signing or storage credentials for any channel.
 
 > [!IMPORTANT]
 > Build jobs create candidates. Only a fresh publication job can turn a verified
@@ -270,16 +266,17 @@ Candidate code never runs with preview or stable credentials.
 - has read-only repository access
 - has no signing or publication credentials
 - builds every supported target
-- runs the required tests and smokes
-- creates checksums, an SBOM, and provenance
+- inherits the required tests and smokes from the independently checked source CI run
+- runs the native release verifier for each target
+- creates checksums and one target release manifest
 - uploads candidate files
 
 ### Verification job
 
 - downloads the exact candidate files
-- checks hashes and archive layout
-- runs install, update, build, test, and package smokes
-- checks the embedded version and source commit
+- checks archive checksum sidecars
+- requires all four target archives and manifests
+- records every candidate file digest and size
 - writes the release record
 
 ### Publication job
@@ -299,67 +296,36 @@ preview or stable release by gaining access to publication credentials.
 
 ## Signing model
 
-Each channel has one operational key:
+The deployed zap contract uses one Ed25519 key:
 
 ```text
-zolt-stable-2026
-zolt-preview-2026
-zolt-zap-2026
+key id: zolt-release-2026
+sidecar version: zolt-ed25519-v1
 ```
 
-Before the first public stable release, create an offline root key. The root authorizes
-channel keys and is used only to add, rotate, revoke, or recover them.
+The matching public key is bundled in Zolt and in this trusted controller. The private
+key exists only as `ZOLT_RELEASE_ED25519_PRIVATE_KEY` in the `channel-zap` GitHub
+environment. The publisher accepts an unencrypted PKCS#8 PEM, signs the exact file
+bytes, and verifies the new signature against the bundled public key before any upload.
+A missing or wrong private key therefore fails before publication.
+
+Each mutable JSON file has a text sidecar:
 
 ```text
-offline root
-├── stable key
-├── preview key
-└── zap key
+version: zolt-ed25519-v1
+keyId: zolt-release-2026
+signature: <base64 Ed25519 signature>
 ```
 
-The root private key never enters GitHub Actions or DigitalOcean. Keep it hardware
-protected with a separate offline backup.
+Both `channels/zap.json` and `releases/zap.json` are signed. The controller verifies the
+currently public pair before using it as publication input, validates its structure,
+and produces deterministic successor files. Native Zolt update clients verify the
+channel sidecar before trusting archive URLs or digests.
 
-> [!CAUTION]
-> Losing the offline root key breaks the base of client trust. Its recovery path must be
-> practiced before stable publication.
-
-At first, channel keys may live in their matching protected GitHub environments. The
-stable key can later move to a hardware-backed or non-exportable signing service
-without changing the file format.
-
-Use one small, versioned, root-signed key document. It records key IDs, allowed
-channels, validity dates, revocations, and overlap during rotation. Do not build a
-larger custom PKI.
-
-Every signed channel file includes:
-
-```text
-schema version
-channel name
-sequence number
-operation: promote or rollback
-issued-at time
-expiry time
-digest of the previous channel file
-release version
-source commit
-release-manifest URL
-release-manifest digest
-channel signature
-```
-
-Clients must:
-
-- receive the expected channel from the caller
-- reject a signed channel name that does not match
-- accept only keys authorized for that channel
-- reject an older sequence number
-- treat rollback as a new, higher sequence pointing to an older immutable release
-- reject unknown keys, channels, algorithms, and schema versions
-- allow pinned installs without reading a channel file
-
-Sign deterministic bytes, not whichever JSON formatting a library happens to emit.
+The current format has no root-signed online key directory or sequence field. Rotating
+`zolt-release-2026` therefore requires a reviewed Zolt source release that adds the new
+public key, an overlap plan, and a separate recovery runbook. Do not generate a new key
+silently if the existing private key is lost.
 
 ## Installation trust
 
@@ -373,16 +339,18 @@ curl -fsSL https://dist.zolt.sh/install.sh | sh
 > This path begins by trusting HTTPS. Signed metadata protects later downloads; it
 > cannot independently authenticate an installer that has already been replaced.
 
-The script can verify signed metadata and file checksums after it starts, but an
-attacker who replaced the script could also replace its embedded key. Do not describe
-`curl | sh` as independently authenticated.
+The current shell installer trusts HTTPS for the channel file and verifies the selected
+archive checksum. It does not yet verify the Ed25519 channel sidecar. Native Zolt update
+clients do verify that sidecar. Even after installer-side signature verification is
+added, an attacker who replaced the installer could also replace its embedded key. Do
+not describe `curl | sh` as independently authenticated.
 
 Offer two install paths:
 
-1. **Convenient:** use the HTTPS installer, then verify signed channel metadata and
-   downloaded file checksums.
-2. **Pinned:** download a versioned installer or archive from an immutable GitHub
-   Release and verify its published checksum and provenance.
+1. **Convenient:** use the HTTPS installer, which verifies the downloaded archive
+   checksum.
+2. **Pinned:** download a versioned archive from its immutable
+   `dist.zolt.sh/artifacts/zap/<version>/` path and verify its published checksum.
 
 Production CI uses the pinned path.
 
@@ -397,22 +365,28 @@ main CI passes
   -> build four targets without release credentials
   -> verify archives and checksums
   -> write a release record
-  -> stop
+  -> upload short-lived candidate artifacts
 ```
 
 ### Zap publication
 
 ```text
 candidate passes
-  -> smoke the exact candidate files
-  -> publish immutable zap files
-  -> sign the next zap channel file
-  -> reject stale or out-of-order publication
+  -> start a separate workflow_run on a fresh hosted runner
+  -> check out the exact trusted controller commit
+  -> download artifacts from the exact candidate run
+  -> verify the record, evidence, manifests, and every file identity again
+  -> verify the currently public signed channel and release index
+  -> reject stale or divergent source history
+  -> sign the new channel and release index with the existing zap key
+  -> publish immutable zap files to zolt-dist
+  -> publish the release index pair
   -> change the zap channel last
 ```
 
 Zap needs no human approval. Its publisher is hard-coded to zap and never accepts an
-arbitrary channel input.
+arbitrary channel input. The signing and Spaces secrets are scoped only to the signing
+and upload steps. Candidate source is never checked out or executed on that runner.
 
 ### Preview publication
 
@@ -484,13 +458,14 @@ digest.
 
 ## Hosting
 
-The three metadata buckets share one DigitalOcean Spaces subscription. Channel files
-are only a few kilobytes. GitHub Releases serves the large files, and production CI
-usually downloads a pinned release instead of polling a channel.
+The initial zap distribution uses the existing `zolt-dist` Space and
+`https://dist.zolt.sh` CDN origin for both immutable version files and signed channel
+metadata. Production CI should download a pinned version instead of polling the moving
+channel.
 
-If usage outgrows Spaces, move metadata behind the same domains to another
-S3-compatible service or CDN. The channel format and release URLs do not need to
-change.
+If usage outgrows Spaces, keep the public URLs stable while migrating the origin. A
+future backend change must preserve the signed JSON contract and immutable version
+paths.
 
 ## Stable release checklist
 

@@ -14,6 +14,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validateTrustedControllerResolution(root, errors);
         validateCandidateToolchainSync(root, errors);
         validateCandidateWorkflow(root, errors);
+        validatePublishWorkflow(root, errors);
     }
 
     private static void validateActionPins(Path root, List<String> errors) {
@@ -139,6 +140,29 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         if (!RepositoryFiles.read(root.resolve("scripts/bootstrap.sh"))
                 .contains("repos/${FULL_REPO}/immutable-releases")) {
             errors.add("bootstrap must enable immutable releases before publication");
+        }
+    }
+
+    private static void validatePublishWorkflow(Path root, List<String> errors) {
+        Path path = root.resolve(RepositoryRules.ZAP_PUBLISH_WORKFLOW);
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String workflow = RepositoryFiles.read(path);
+        for (String fragment : RepositoryRules.PUBLISH_WORKFLOW_FRAGMENTS) {
+            if (!workflow.contains(fragment)) {
+                errors.add("zap publish workflow is missing required contract: " + fragment);
+            }
+        }
+        for (String fragment : RepositoryRules.FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS) {
+            if (workflow.contains(fragment)) {
+                errors.add("zap publish workflow contains forbidden candidate authority: " + fragment);
+            }
+        }
+        int immutable = workflow.indexOf("scripts/publish-zap");
+        int publicVerification = workflow.indexOf("Verify public zap publication");
+        if (immutable < 0 || publicVerification < immutable) {
+            errors.add("zap publish workflow must verify the public result after publication");
         }
     }
 }

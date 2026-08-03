@@ -66,4 +66,21 @@ final class RepositoryValidatorTest {
         assertTrue(errors.contains(
                 "zap candidate build must sync the source-managed Java toolchain before distribution"));
     }
+
+    @Test
+    void zapPublisherMustUseFixedUnapprovedZapEnvironment(@TempDir Path root)
+            throws IOException {
+        Path workflow = root.resolve(".github/workflows/zap-publish.yml");
+        Files.createDirectories(workflow.getParent());
+        Files.writeString(
+                workflow,
+                Files.readString(Path.of(".github/workflows/zap-publish.yml"))
+                        .replace("environment: channel-zap", "environment: channel-stable"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "zap publish workflow is missing required contract: environment: channel-zap"));
+    }
 }

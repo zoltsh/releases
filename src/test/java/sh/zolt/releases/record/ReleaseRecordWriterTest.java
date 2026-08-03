@@ -79,6 +79,19 @@ final class ReleaseRecordWriterTest {
     }
 
     @Test
+    void rejectsSymbolicLinksInCandidateDownloads() throws IOException {
+        writeAllArchives();
+        Files.createSymbolicLink(
+                candidates.resolve("candidate-link"),
+                candidates.resolve("zolt-" + VERSION + "-linux-x64.tar.gz"));
+
+        IllegalArgumentException error =
+                assertThrows(IllegalArgumentException.class, () -> WRITER.build(request(VERSION)));
+
+        assertTrue(error.getMessage().contains("symbolic links"));
+    }
+
+    @Test
     void rejectsChannelOutsideSchema() throws IOException {
         writeAllArchives();
 

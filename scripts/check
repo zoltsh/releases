@@ -15,3 +15,4 @@ zolt test --no-progress --color never
 zolt package --quiet --no-progress --color never
 zolt check --context ci --no-progress --color never
 zolt run-package --quiet --no-progress --color never -- validate-repository
+scripts/publish-zap-test

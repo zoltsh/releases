@@ -1,5 +1,6 @@
 package sh.zolt.releases.record;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
@@ -12,10 +13,10 @@ import java.util.List;
 import java.util.Map;
 import sh.zolt.releases.io.JsonSupport;
 
-final class ReleaseRecordValidator {
+public final class ReleaseRecordValidator {
     private final Schema schema;
 
-    ReleaseRecordValidator(Path schemaFile) {
+    public ReleaseRecordValidator(Path schemaFile) {
         Path normalized = schemaFile.toAbsolutePath().normalize();
         if (!Files.isRegularFile(normalized)) {
             throw new IllegalArgumentException(
@@ -30,9 +31,14 @@ final class ReleaseRecordValidator {
         }
     }
 
-    void validate(Map<String, Object> record) {
+    public void validate(Map<String, Object> record) {
+        JsonNode tree = JsonSupport.mapper().valueToTree(record);
+        validate(tree);
+    }
+
+    public void validate(JsonNode record) {
         List<com.networknt.schema.Error> errors = schema.validate(
-                JsonSupport.write(record),
+                record.toString(),
                 InputFormat.JSON,
                 context -> context.executionConfig(config -> config.formatAssertionsEnabled(true)));
         if (errors.isEmpty()) {

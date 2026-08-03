@@ -9,7 +9,7 @@ source_branch = "main"
 
 [release]
 default_channel = "stable"
-large_artifact_backend = "github-releases"
+large_artifact_backend = "s3-compatible"
 metadata_backend = "s3-compatible"
 production_ci_follows_channel = false
 
@@ -20,7 +20,7 @@ source = "protected-final-tag"
 human_gate = "protected-environment"
 approval_count = 1
 origin = "https://dist.zolt.sh"
-bucket = "zolt-channel-stable"
+bucket = "zolt-dist"
 signing_key_id = "zolt-stable-2026"
 retention = "permanent"
 publish_central = false
@@ -40,14 +40,14 @@ publish_central = false
 publish_homebrew = false
 
 [channel.zap]
-status = "candidate"
+status = "enabled"
 default = false
 source = "healthy-main-commit"
 human_gate = "none"
 approval_count = 0
-origin = "https://zap.dist.zolt.sh"
-bucket = "zolt-channel-zap"
-signing_key_id = "zolt-zap-2026"
+origin = "https://dist.zolt.sh"
+bucket = "zolt-dist"
+signing_key_id = "zolt-release-2026"
 retention = "bounded"
 publish_central = false
 publish_homebrew = false

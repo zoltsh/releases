@@ -34,15 +34,16 @@
 curl -fsSL https://dist.zolt.sh/install.sh | sh
 ```
 
-The installer selects the stable channel by default.
+Until the first stable release exists, the installer follows the automatic zap
+channel. Production automation should use an exact version and checksum.
 
 ## Choose a channel
 
 | Channel | Best for | Origin |
 | :--- | :--- | :--- |
-| `stable` | Recommended releases | [`dist.zolt.sh`](https://dist.zolt.sh) |
-| `preview` | Alpha, beta, and release candidates | [`preview.dist.zolt.sh`](https://preview.dist.zolt.sh) |
-| `zap` | The latest healthy build from `main` | [`zap.dist.zolt.sh`](https://zap.dist.zolt.sh) |
+| `stable` | Recommended releases; not enabled yet | [`dist.zolt.sh`](https://dist.zolt.sh) |
+| `preview` | Alpha, beta, and release candidates; not enabled yet | Reserved |
+| `zap` | The latest healthy build from `main` | [`dist.zolt.sh`](https://dist.zolt.sh/channels/zap.json) |
 
 > [!TIP]
 > Production builds should pin an exact version and checksum instead of following a
@@ -54,14 +55,13 @@ The installer selects the stable channel by default.
 | :--- | :--- |
 | Native archives | Zolt for each supported platform |
 | SHA-256 checksums | File-integrity verification |
-| Release manifest | The complete contents of the release |
-| Software bill of materials | Included components and dependencies |
-| Build provenance | Where and how the release was built |
-| Signed release record | Source, workflow, and artifact identity |
+| Release manifest | Version, builder metadata, and archive identities |
+| Release record | Source, workflow, controller, and candidate file identities |
+| Source CI evidence | The exact successful source run used for the build |
 
-Large, versioned files live in immutable
-[GitHub Releases](https://github.com/zoltsh/releases/releases). Small signed channel
-files tell the installer which release is current.
+Zap files live at immutable versioned paths in the `zolt-dist` DigitalOcean Space.
+Signed channel and release-index files tell clients which version is current. Preview
+and stable distribution remain disabled until their separate contracts are built.
 
 ## About this repository
 

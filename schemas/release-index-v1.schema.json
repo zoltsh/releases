@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zolt.sh/schemas/release-index-v1.schema.json",
+  "title": "Zolt release index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "channel",
+    "updatedAt",
+    "versions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "channel": {
+      "const": "zap"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "commit",
+          "createdAt",
+          "artifacts"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "artifacts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/artifact"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "archive",
+        "archiveUrl",
+        "checksumUrl",
+        "sha256",
+        "format",
+        "binaryName"
+      ],
+      "properties": {
+        "target": {
+          "enum": [
+            "linux-arm64",
+            "linux-x64",
+            "macos-arm64",
+            "macos-x64"
+          ]
+        },
+        "archive": {
+          "type": "string",
+          "pattern": "^zolt-.+-(?:linux-arm64|linux-x64|macos-arm64|macos-x64)\\.tar\\.gz$"
+        },
+        "archiveUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://dist\\.zolt\\.sh/artifacts/zap/"
+        },
+        "checksumUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://dist\\.zolt\\.sh/artifacts/zap/.+\\.sha256$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "format": {
+          "const": "tar.gz"
+        },
+        "binaryName": {
+          "const": "zolt"
+        }
+      }
+    }
+  }
+}

@@ -36,7 +36,7 @@ The script:
 - sets the basic repository options
 - makes the default Actions token read-only
 - creates `channel-zap`, `channel-preview`, and `channel-stable`
-- enables immutable GitHub Releases
+- enables immutable GitHub Releases for future preview and stable work
 
 The repository should be public so its release process and evidence are visible.
 
@@ -104,8 +104,9 @@ or the candidate commit.
 For `channel-stable`, prevent self-review and disable administrator bypass where
 available.
 
-Do not add secrets until that channel has a reviewed publisher and its status is
-enabled in `policy/channels.toml`.
+Zap now has a reviewed publisher and is enabled in `policy/channels.toml`. Preview and
+stable must not receive secrets until their own publishers are implemented and
+reviewed.
 
 ## 6. Connect `zoltsh/zolt`
 
@@ -158,35 +159,58 @@ It cannot:
 
 Rotate the App key if the source workflow or repository is compromised.
 
-## 7. Prepare storage and signing
+## 7. Configure zap storage and signing
 
-Before enabling publication, create:
+Zap uses the existing DigitalOcean distribution:
 
 ```text
-zolt-channel-stable
-zolt-channel-preview
-zolt-channel-zap
+Space:    zolt-dist
+Region:   nyc3
+Endpoint: https://nyc3.digitaloceanspaces.com
+Origin:   https://dist.zolt.sh
+Key ID:   zolt-release-2026
 ```
 
-Each bucket gets its own write credential and signing key. Put each credential only in
-its matching GitHub environment. Enable bucket versioning and keep listings private.
+Enable object versioning on `zolt-dist`. Keep bucket listing private and use a Spaces
+key restricted to the `zolt-dist` Space. The publisher needs object read and write
+access so it can refuse a versioned object whose remote bytes differ.
 
-GitHub Releases stores archives and other large files. The buckets store only small,
-signed channel metadata.
+Add these secrets to the `channel-zap` environment:
 
-Create the offline root key before the first public stable release. Keep it out of
-GitHub and DigitalOcean.
+```text
+DO_SPACES_ACCESS_KEY_ID
+DO_SPACES_SECRET_ACCESS_KEY
+ZOLT_RELEASE_ED25519_PRIVATE_KEY
+```
 
-> [!CAUTION]
-> Never store the offline root key in GitHub Actions or ordinary cloud storage.
+`ZOLT_RELEASE_ED25519_PRIVATE_KEY` must be the existing unencrypted PKCS#8 Ed25519 PEM
+whose public key is bundled as `zolt-release-2026`. The trusted signing command proves
+the match before uploading. If that private key has been lost, stop and design a
+client-compatible key rotation; creating a replacement under the same key ID will not
+work.
 
-## 8. Enable channels in order
+The workflow fixes the bucket, region, endpoint, origin, and key ID in reviewed code.
+They are not workflow inputs or secrets.
 
-1. Run and inspect zap candidates.
-2. Add exact-file smoke tests and the zap publisher.
-3. Change zap from `candidate` to `enabled` in `policy/channels.toml`.
-4. Add preview publication.
-5. Add stable publication last.
+## 8. Start automatic zap publication
+
+After the publisher is merged to `main` and the three environment secrets exist,
+rerun the source CI dispatcher or allow the next successful `zoltsh/zolt` `main` CI
+run to dispatch a candidate. A successful `zap candidate` run automatically starts
+`zap publish`; there is no environment approval.
+
+The first successful publisher run changes the public zap channel. Before triggering
+it, confirm the current signed files at:
+
+```text
+https://dist.zolt.sh/channels/zap.json
+https://dist.zolt.sh/channels/zap.json.sig
+https://dist.zolt.sh/releases/zap.json
+https://dist.zolt.sh/releases/zap.json.sig
+```
+
+Add preview publication next and stable publication last. Do not enable either by
+copying the zap workflow and changing its channel name.
 
 Do not turn stable on by copying the zap workflow and changing its channel name.
 
@@ -198,5 +222,7 @@ Before any public release:
 - [ ] Branch and tag rules are active.
 - [ ] Stable has one reviewer and prevents self-review.
 - [ ] Zap and preview have no reviewers.
-- [ ] Each environment can reach only its own bucket and key.
+- [ ] `zolt-dist` object versioning is enabled.
+- [ ] `channel-zap` has the existing Spaces key and matching Ed25519 private key.
+- [ ] The live zap channel and release index verify with `zolt-release-2026`.
 - [ ] `scripts/check` passes.

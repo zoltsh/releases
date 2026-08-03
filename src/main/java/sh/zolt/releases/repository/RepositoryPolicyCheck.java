@@ -82,12 +82,15 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 1L,
                 "stable must require one protected approval",
                 errors);
-        distinct(List.of(stable, preview, zap), "origin", "channel origins must be distinct", errors);
-        distinct(List.of(stable, preview, zap), "bucket", "channel buckets must be distinct", errors);
+        List<TomlTable> activeChannels = List.of(stable, preview, zap).stream()
+                .filter(table -> !"disabled".equals(table.getString("status")))
+                .toList();
+        distinct(activeChannels, "origin", "active channel origins must be distinct", errors);
+        distinct(activeChannels, "bucket", "active channel buckets must be distinct", errors);
         distinct(
-                List.of(stable, preview, zap),
+                activeChannels,
                 "signing_key_id",
-                "channel signing key IDs must be distinct",
+                "active channel signing key IDs must be distinct",
                 errors);
 
         requireString(

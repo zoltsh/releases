@@ -41,16 +41,20 @@ final class RepositoryRules {
             ".github/dependabot.yml",
             ".github/workflows/validate.yml",
             ".github/workflows/zap-candidate.yml",
+            ".github/workflows/zap-publish.yml",
             ".gitattributes",
             "docs/ARCHITECTURE.md",
             "docs/RUNBOOKS.md",
             "docs/SETUP.md",
             "policy/channels.toml",
             "policy/repository-settings.toml",
-            "schemas/channel-envelope-v1.schema.json",
+            "schemas/channel-manifest-v1.schema.json",
             "schemas/release-record-v1.schema.json",
+            "schemas/release-index-v1.schema.json",
             "scripts/bootstrap.sh",
             "scripts/check",
+            "scripts/publish-zap",
+            "scripts/publish-zap-test",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml",
             "src/main/java/sh/zolt/releases/cli/ReleaseController.java",
@@ -67,8 +71,10 @@ final class RepositoryRules {
     static final List<String> TRUSTED_CONTROLLER_WORKFLOWS = List.of(
             ".github/workflows/preview.yml",
             ".github/workflows/stable.yml",
-            ".github/workflows/zap-candidate.yml");
+            ".github/workflows/zap-candidate.yml",
+            ".github/workflows/zap-publish.yml");
     static final String ZAP_CANDIDATE_WORKFLOW = ".github/workflows/zap-candidate.yml";
+    static final String ZAP_PUBLISH_WORKFLOW = ".github/workflows/zap-publish.yml";
     static final String TRUSTED_ZOLT_SETUP = "uses: ./.github/actions/setup-zolt";
     static final String LOCKED_ZOLT_RESOLVE =
             "zolt resolve --locked --quiet --no-progress --color never";
@@ -85,6 +91,35 @@ final class RepositoryRules {
             "--expected-version",
             "--source-evidence",
             "./.github/actions/setup-zolt");
+    static final List<String> PUBLISH_WORKFLOW_FRAGMENTS = List.of(
+            "workflow_run:",
+            "workflows: [\"zap candidate\"]",
+            "github.event.workflow_run.conclusion == 'success'",
+            "github.event.workflow_run.head_branch == 'main'",
+            "github.event.workflow_run.head_repository.full_name == 'zoltsh/releases'",
+            "environment: channel-zap",
+            "run-id: ${{ github.event.workflow_run.id }}",
+            "name: zolt-zap-linux-x64",
+            "name: zolt-zap-linux-arm64",
+            "name: zolt-zap-macos-x64",
+            "name: zolt-zap-macos-arm64",
+            "name: zolt-source-ci-evidence",
+            "name: zolt-zap-release-record",
+            "--output out/reverified-source-run.json",
+            "cmp evidence/source-run.json out/reverified-source-run.json",
+            "prepare-zap-publication",
+            "verify-release-file",
+            "sign-release-file",
+            "ZOLT_RELEASE_ED25519_PRIVATE_KEY: ${{ secrets.ZOLT_RELEASE_ED25519_PRIVATE_KEY }}",
+            "AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}",
+            "AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}",
+            "scripts/publish-zap",
+            "--expected-current-channel current/channels/zap.json");
+    static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
+            "scripts/zap-distribution",
+            "working-directory: source",
+            "actions/checkout@main",
+            "actions/download-artifact@main");
     static final List<String> FORBIDDEN_DISPATCHER_FRAGMENTS = List.of(
             "permission-contents: write",
             "DO_SPACES_",

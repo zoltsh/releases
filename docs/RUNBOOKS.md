@@ -10,7 +10,8 @@ Use these procedures when a release fails or release authority may be compromise
 > deployment IDs before changing anything.
 
 > [!IMPORTANT]
-> Add the real account, key, bucket, and contact details before publication is enabled.
+> Zap publication is enabled for `zolt-dist`. Add the real owner and incident-contact
+> details before enabling preview or stable.
 
 ## First response
 
@@ -25,13 +26,19 @@ Use these procedures when a release fails or release authority may be compromise
 
 ## Zap failure
 
-1. Do not change the zap channel if the build, checks, or file smokes fail.
+1. Do not change the zap channel if the build, checks, revalidation, signing, or upload
+   fails.
 2. Leave the previous zap release current.
 3. If files were uploaded but the channel did not change, leave them unreferenced until
-   the cleanup job removes the whole release.
-4. If the channel changed to a bad release, publish a new signed channel file with a
-   higher sequence number that points to the last good release.
-5. Keep the logs and release record.
+   a reviewed cleanup removes the whole version; never replace them with different
+   bytes.
+4. If the release index changed but the channel did not, rerun the same publisher. Its
+   immutable writes are idempotent and the channel JSON remains the last write.
+5. If the channel changed to a bad release, disable `zap publish`, preserve the signed
+   bad metadata, and use a reviewed recovery change to publish newly signed channel and
+   release-index files that point to the last good immutable version.
+6. Keep the logs, release record, source evidence, staged signatures, and Space object
+   version IDs.
 
 ## Preview failure
 

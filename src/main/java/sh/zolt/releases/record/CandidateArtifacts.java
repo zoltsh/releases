@@ -13,22 +13,26 @@ import java.util.regex.Matcher;
 import sh.zolt.releases.core.ReleaseConstants;
 import sh.zolt.releases.io.ProjectFiles;
 
-final class CandidateArtifacts {
+public final class CandidateArtifacts {
     private final Path root;
     private final List<Path> files;
+    private final Map<String, Path> archives;
     private final String version;
 
-    private CandidateArtifacts(Path root, List<Path> files, String version) {
+    private CandidateArtifacts(
+            Path root, List<Path> files, Map<String, Path> archives, String version) {
         this.root = root;
         this.files = files;
+        this.archives = Map.copyOf(archives);
         this.version = version;
     }
 
-    static CandidateArtifacts load(Path candidates, String expectedVersion) {
+    public static CandidateArtifacts load(Path candidates, String expectedVersion) {
         Path root = candidates.toAbsolutePath().normalize();
-        if (!Files.isDirectory(root)) {
+        if (Files.isSymbolicLink(root) || !Files.isDirectory(root)) {
             throw new IllegalArgumentException("candidate directory does not exist: " + root);
         }
+        rejectSymbolicLinks(root);
 
         List<Path> files = ProjectFiles.walk(root);
         Map<String, Path> archives = new LinkedHashMap<>();
@@ -65,14 +69,39 @@ final class CandidateArtifacts {
                     "candidate version \"" + version + "\" does not match expected version \""
                             + expectedVersion + "\"");
         }
-        return new CandidateArtifacts(root, files, version);
+        return new CandidateArtifacts(root, files, archives, version);
     }
 
-    String version() {
+    private static void rejectSymbolicLinks(Path root) {
+        try (var paths = Files.walk(root)) {
+            Path symbolicLink = paths.filter(Files::isSymbolicLink).findFirst().orElse(null);
+            if (symbolicLink != null) {
+                throw new IllegalArgumentException(
+                        "candidate directory must not contain symbolic links: " + symbolicLink);
+            }
+        } catch (IOException exception) {
+            throw new IllegalArgumentException(
+                    "could not inspect candidate directory: " + exception.getMessage(), exception);
+        }
+    }
+
+    public Path root() {
+        return root;
+    }
+
+    public List<Path> files() {
+        return files;
+    }
+
+    public Map<String, Path> archives() {
+        return archives;
+    }
+
+    public String version() {
         return version;
     }
 
-    List<Map<String, Object>> entries() {
+    public List<Map<String, Object>> entries() {
         List<Map<String, Object>> artifacts = new ArrayList<>();
         for (Path path : files) {
             Map<String, Object> artifact = new LinkedHashMap<>();
