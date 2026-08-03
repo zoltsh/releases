@@ -224,7 +224,22 @@ release_exists() {
         return 0
     fi
     if grep -Eqi 'HTTP 404|Not Found|release not found' "$release_error"; then
-        return 1
+        local release_api_url
+        if release_api_url="$("$gh_cli" release view "$tag" \
+                --repo "$repository" \
+                --json apiUrl \
+                --jq .apiUrl 2>"$release_error")"; then
+            if [[ -z "$release_api_url" ]] \
+                || ! "$gh_cli" api "$release_api_url" >"$release_json" 2>"$release_error"; then
+                printf 'error: could not inspect draft GitHub Release %s\n' "$tag" >&2
+                cat "$release_error" >&2
+                exit 1
+            fi
+            return 0
+        fi
+        if grep -Eqi 'HTTP 404|Not Found|release not found' "$release_error"; then
+            return 1
+        fi
     fi
     printf 'error: could not inspect GitHub Release %s\n' "$tag" >&2
     cat "$release_error" >&2
@@ -263,6 +278,15 @@ validate_release_identity() {
         || "$(jq -er '.prerelease' "$release_json")" != "$prerelease" ]]; then
         printf 'error: existing GitHub Release has divergent identity: %s\n' "$tag" >&2
         exit 1
+    fi
+    if [[ "$draft" == "true" ]]; then
+        if [[ "$(jq -er '.target_commitish' "$release_json")" != "$target_sha" ]]; then
+            printf 'error: draft GitHub Release %s does not target controller commit %s\n' \
+                "$tag" "$target_sha" >&2
+            exit 1
+        fi
+        printf '%s\n' "$draft"
+        return
     fi
     if ! "$gh_cli" api "repos/$repository/git/ref/tags/$tag" >"$temporary/tag-ref.json"; then
         printf 'error: could not verify Git tag for release %s\n' "$tag" >&2

@@ -20,7 +20,15 @@ command="$1"
 shift
 if [[ "$command" == "api" ]]; then
     endpoint="${1#/}"
+    endpoint="${endpoint#https://api.github.test/}"
     if [[ "$endpoint" =~ ^repos/[^/]+/[^/]+/releases/tags/(.+)$ ]]; then
+        tag="${BASH_REMATCH[1]}"
+        file="$root/releases/$tag.json"
+        if [[ -f "$file" ]] && [[ "$(jq -r '.draft' "$file")" == "true" ]]; then
+            printf 'HTTP 404: Not Found\n' >&2
+            exit 1
+        fi
+    elif [[ "$endpoint" =~ ^repos/[^/]+/[^/]+/releases/drafts/(.+)$ ]]; then
         tag="${BASH_REMATCH[1]}"
         file="$root/releases/$tag.json"
     elif [[ "$endpoint" =~ ^repos/[^/]+/[^/]+/git/ref/tags/(.+)$ ]]; then
@@ -45,6 +53,35 @@ operation="$1"
 tag="$2"
 shift 2
 case "$operation" in
+    view)
+        release="$root/releases/$tag.json"
+        repository=""
+        if [[ ! -f "$release" ]]; then
+            printf 'release not found\n' >&2
+            exit 1
+        fi
+        while [[ "$#" -gt 0 ]]; do
+            case "$1" in
+                --repo)
+                    repository="$2"
+                    shift 2
+                    ;;
+                --json)
+                    [[ "$2" == "apiUrl" ]]
+                    shift 2
+                    ;;
+                --jq)
+                    [[ "$2" == ".apiUrl" ]]
+                    shift 2
+                    ;;
+                *)
+                    printf 'error: unsupported fake release-view argument: %s\n' "$1" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        printf 'https://api.github.test/repos/%s/releases/drafts/%s\n' "$repository" "$tag"
+        ;;
     create)
         target=""
         repository=""
@@ -81,8 +118,6 @@ case "$operation" in
             --argjson prerelease "$prerelease" \
             '{tag_name:$tag,target_commitish:$target,draft:true,prerelease:$prerelease,immutable:false,assets:[]}' \
             >"$root/releases/$tag.json"
-        jq -n --arg sha "$target" '{object:{type:"commit",sha:$sha}}' \
-            >"$root/tags/$tag.json"
         printf 'create %s %s\n' "$tag" "$repository" >>"$ZOLT_FAKE_GH_LOG"
         ;;
     upload)
@@ -143,6 +178,9 @@ case "$operation" in
         done
         jq '.draft = false | .immutable = true' "$release" >"$release.next"
         mv "$release.next" "$release"
+        target="$(jq -r '.target_commitish' "$release")"
+        jq -n --arg sha "$target" '{object:{type:"commit",sha:$sha}}' \
+            >"$root/tags/$tag.json"
         printf 'publish %s\n' "$tag" >>"$ZOLT_FAKE_GH_LOG"
         ;;
     *)
@@ -157,7 +195,7 @@ make_publication() {
     local version="$2"
     local tag="$3"
     local key_id="$4"
-    local publication="$temporary/publication-$channel"
+    local publication="$temporary/publication-$channel-$version"
     local version_directory="$publication/artifacts/$channel/$version"
     mkdir -p "$version_directory" "$publication/channels" "$publication/releases"
     for target in linux-arm64 linux-x64 macos-arm64 macos-x64; do
@@ -215,6 +253,23 @@ if [[ "$(grep -c '^upload ' "$github_log")" -ne "$upload_count" ]]; then
     printf 'error: idempotent GitHub publication uploaded an asset again\n' >&2
     exit 1
 fi
+
+divergent_version="0.1.0-zap.20260804.bbbbbbbbbbbb"
+divergent_tag="zolt-zap-$divergent_version"
+divergent_publication="$(make_publication zap "$divergent_version" "$divergent_tag" zolt-release-2026)"
+jq -n \
+    --arg tag "$divergent_tag" \
+    --arg target "$(printf 'b%.0s' {1..40})" \
+    '{tag_name:$tag,target_commitish:$target,draft:true,prerelease:true,immutable:false,assets:[]}' \
+    >"$github_store/releases/$divergent_tag.json"
+if scripts/publish-github-release \
+    --channel zap \
+    --publication "$divergent_publication" \
+    --target-sha "$target_sha" >"$temporary/draft-target-mismatch.log" 2>&1; then
+    printf 'error: divergent draft GitHub Release target was accepted\n' >&2
+    exit 1
+fi
+grep -F 'does not target controller commit' "$temporary/draft-target-mismatch.log" >/dev/null
 
 preview_version="0.2.0-rc.1"
 preview_tag="zolt-preview-v$preview_version"
