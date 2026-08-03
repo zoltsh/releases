@@ -11,6 +11,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
     public void validate(Path root, List<String> errors) {
         validateActionPins(root, errors);
         validateWorkflowPermissions(root, errors);
+        validateTrustedControllerResolution(root, errors);
         validateCandidateWorkflow(root, errors);
     }
 
@@ -38,6 +39,36 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add(
                         "workflow must declare top-level permissions: "
                                 + ProjectFiles.relative(root, path));
+            }
+        }
+    }
+
+    private static void validateTrustedControllerResolution(Path root, List<String> errors) {
+        for (String file : RepositoryRules.TRUSTED_CONTROLLER_WORKFLOWS) {
+            Path path = root.resolve(file);
+            if (!Files.isRegularFile(path)) {
+                continue;
+            }
+            String workflow = RepositoryFiles.read(path);
+            int setup = workflow.indexOf(RepositoryRules.TRUSTED_ZOLT_SETUP);
+            while (setup >= 0) {
+                int nextSetup = workflow.indexOf(
+                        RepositoryRules.TRUSTED_ZOLT_SETUP,
+                        setup + RepositoryRules.TRUSTED_ZOLT_SETUP.length());
+                int run = workflow.indexOf(
+                        RepositoryRules.TRUSTED_ZOLT_RUN,
+                        setup + RepositoryRules.TRUSTED_ZOLT_SETUP.length());
+                if (run >= 0 && (nextSetup < 0 || run < nextSetup)) {
+                    int resolve = workflow.indexOf(
+                            RepositoryRules.LOCKED_ZOLT_RESOLVE,
+                            setup + RepositoryRules.TRUSTED_ZOLT_SETUP.length());
+                    if (resolve < 0 || resolve > run || (nextSetup >= 0 && resolve > nextSetup)) {
+                        errors.add(
+                                "trusted controller must resolve locked dependencies before zolt run in "
+                                        + file);
+                    }
+                }
+                setup = nextSetup;
             }
         }
     }

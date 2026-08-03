@@ -64,6 +64,14 @@ final class RepositoryRules {
             "scripts/bootstrap.sh",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml");
+    static final List<String> TRUSTED_CONTROLLER_WORKFLOWS = List.of(
+            ".github/workflows/preview.yml",
+            ".github/workflows/stable.yml",
+            ".github/workflows/zap-candidate.yml");
+    static final String TRUSTED_ZOLT_SETUP = "uses: ./.github/actions/setup-zolt";
+    static final String LOCKED_ZOLT_RESOLVE =
+            "zolt resolve --locked --quiet --no-progress --color never";
+    static final String TRUSTED_ZOLT_RUN = "zolt run ";
     static final List<String> CANDIDATE_WORKFLOW_FRAGMENTS = List.of(
             "verify-source-run",
             "compute-zap-version",

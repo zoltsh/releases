@@ -34,6 +34,9 @@ jobs:
       - name: Set up trusted Zolt
         uses: ./.github/actions/setup-zolt
 
+      - name: Resolve trusted controller
+        run: zolt resolve --locked --quiet --no-progress --color never
+
       - name: Validate preview intent
         env:
           SOURCE_REPOSITORY: ${{ inputs.source_repository }}
