@@ -15,6 +15,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validateCandidateToolchainSync(root, errors);
         validateCandidateWorkflow(root, errors);
         validatePublishWorkflow(root, errors);
+        validateRecoveryWorkflow(root, errors);
         validatePublicationBackends(root, errors);
     }
 
@@ -166,6 +167,26 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         if (immutable < 0 || metadata < immutable || publicVerification < metadata) {
             errors.add(
                     "zap publish workflow must publish immutable GitHub assets, move metadata, then verify the public result");
+        }
+    }
+
+    private static void validateRecoveryWorkflow(Path root, List<String> errors) {
+        Path path = root.resolve(RepositoryRules.ZAP_RECOVER_WORKFLOW);
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String workflow = RepositoryFiles.read(path);
+        for (String fragment : RepositoryRules.RECOVER_WORKFLOW_FRAGMENTS) {
+            if (!workflow.contains(fragment)) {
+                errors.add("zap recovery workflow is missing required contract: " + fragment);
+            }
+        }
+        int immutable = workflow.indexOf(".immutable == true");
+        int metadata = workflow.indexOf("scripts/publish-channel-metadata");
+        int publicVerification = workflow.indexOf("Verify public zap recovery");
+        if (immutable < 0 || metadata < immutable || publicVerification < metadata) {
+            errors.add(
+                    "zap recovery workflow must verify an immutable release, move metadata, then verify the public result");
         }
     }
 

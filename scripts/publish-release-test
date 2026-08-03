@@ -328,9 +328,11 @@ mkdir -p "$spaces_store/zolt-dist/channels"
 cat >"$fake_aws" <<'FAKE_AWS'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$1" == "--endpoint-url" ]]; then
+while [[ "$1" == "--endpoint-url" \
+    || "$1" == "--cli-connect-timeout" \
+    || "$1" == "--cli-read-timeout" ]]; do
     shift 2
-fi
+done
 [[ "$1" == "s3api" ]]
 operation="$2"
 shift 2

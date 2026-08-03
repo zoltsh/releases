@@ -43,6 +43,7 @@ final class RepositoryRules {
             ".github/workflows/validate.yml",
             ".github/workflows/zap-candidate.yml",
             ".github/workflows/zap-publish.yml",
+            ".github/workflows/zap-recover.yml",
             ".gitattributes",
             "docs/ARCHITECTURE.md",
             "docs/RUNBOOKS.md",
@@ -74,9 +75,11 @@ final class RepositoryRules {
             ".github/workflows/preview.yml",
             ".github/workflows/stable.yml",
             ".github/workflows/zap-candidate.yml",
-            ".github/workflows/zap-publish.yml");
+            ".github/workflows/zap-publish.yml",
+            ".github/workflows/zap-recover.yml");
     static final String ZAP_CANDIDATE_WORKFLOW = ".github/workflows/zap-candidate.yml";
     static final String ZAP_PUBLISH_WORKFLOW = ".github/workflows/zap-publish.yml";
+    static final String ZAP_RECOVER_WORKFLOW = ".github/workflows/zap-recover.yml";
     static final String TRUSTED_ZOLT_SETUP = "uses: ./.github/actions/setup-zolt";
     static final String LOCKED_ZOLT_RESOLVE =
             "zolt resolve --locked --quiet --no-progress --color never";
@@ -126,6 +129,19 @@ final class RepositoryRules {
             "working-directory: source",
             "actions/checkout@main",
             "actions/download-artifact@main");
+    static final List<String> RECOVER_WORKFLOW_FRAGMENTS = List.of(
+            "workflow_dispatch:",
+            "environment: channel-zap",
+            "permissions:\n  contents: read",
+            "concurrency:\n  group: zap-publication\n  cancel-in-progress: false",
+            "gh release view \"$RELEASE_TAG\"",
+            "gh release download \"$RELEASE_TAG\"",
+            ".draft == false and .prerelease == true and .immutable == true",
+            "verify-release-file",
+            "scripts/publish-channel-metadata",
+            "--expected-current-channel current/channels/zap.json",
+            "AWS_MAX_ATTEMPTS: \"1\"",
+            "Verify public zap recovery");
     static final List<String> FORBIDDEN_DISPATCHER_FRAGMENTS = List.of(
             "permission-contents: write",
             "DO_SPACES_",

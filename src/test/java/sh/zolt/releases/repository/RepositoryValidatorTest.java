@@ -95,4 +95,21 @@ final class RepositoryValidatorTest {
 
         assertTrue(errors.contains("channel metadata publisher must not upload release artifacts"));
     }
+
+    @Test
+    void zapRecoveryMustRequireAnImmutableRelease(@TempDir Path root) throws IOException {
+        Path workflow = root.resolve(".github/workflows/zap-recover.yml");
+        Files.createDirectories(workflow.getParent());
+        Files.writeString(
+                workflow,
+                Files.readString(Path.of(".github/workflows/zap-recover.yml"))
+                        .replace(".immutable == true", ".immutable == false"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "zap recovery workflow is missing required contract: "
+                        + ".draft == false and .prerelease == true and .immutable == true"));
+    }
 }

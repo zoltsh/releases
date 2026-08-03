@@ -31,6 +31,9 @@ Use these procedures when a release fails or release authority may be compromise
 2. Leave the previous zap release current.
 3. If the immutable GitHub Release exists but the channel did not change, rerun the same
    publisher. It verifies and reuses the exact release before retrying metadata.
+   If the original publisher cannot reach Spaces, dispatch `recover zap metadata` with
+   that immutable release tag. The recovery workflow verifies the release and its signed
+   metadata snapshots before moving only the four channel metadata objects.
 4. If the release index changed but the channel did not, rerun the same publisher. The
    channel JSON remains the last write.
 5. If the channel changed to a bad release, disable `zap publish`, preserve the signed

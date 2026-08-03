@@ -1,0 +1,150 @@
+name: recover zap metadata
+run-name: recover zap metadata ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable zap release tag whose signed metadata should become current
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-publication
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: channel-zap
+
+    steps:
+      - name: Check out trusted recovery controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Resolve trusted controller
+        run: zolt resolve --locked --quiet --no-progress --color never
+
+      - name: Fetch current signed zap metadata
+        run: |
+          set -euo pipefail
+          mkdir -p current/channels current/releases
+          curl --proto '=https' --tlsv1.2 -fsSLo current/channels/zap.json \
+              https://dist.zolt.sh/channels/zap.json
+          curl --proto '=https' --tlsv1.2 -fsSLo current/channels/zap.json.sig \
+              https://dist.zolt.sh/channels/zap.json.sig
+          curl --proto '=https' --tlsv1.2 -fsSLo current/releases/zap.json \
+              https://dist.zolt.sh/releases/zap.json
+          curl --proto '=https' --tlsv1.2 -fsSLo current/releases/zap.json.sig \
+              https://dist.zolt.sh/releases/zap.json.sig
+          zolt run --quiet -- verify-release-file \
+              --input current/channels/zap.json \
+              --signature current/channels/zap.json.sig
+          zolt run --quiet -- verify-release-file \
+              --input current/releases/zap.json \
+              --signature current/releases/zap.json.sig
+
+      - name: Recover exact signed metadata from immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^zolt-zap-[0-9]+\.[0-9]+\.[0-9]+-zap\.[0-9]{8}\.[0-9a-f]{12}$ ]]
+          mkdir -p out
+          release_api_url="$(gh release view "$RELEASE_TAG" \
+              --repo zoltsh/releases \
+              --json apiUrl \
+              --jq .apiUrl)"
+          gh api "$release_api_url" > out/recovery-release.json
+          jq -e \
+              --arg tag "$RELEASE_TAG" \
+              '.tag_name == $tag and .draft == false and .prerelease == true and .immutable == true' \
+              out/recovery-release.json >/dev/null
+          mkdir -p out/recovered out/publication/channels out/publication/releases
+          gh release download "$RELEASE_TAG" \
+              --repo zoltsh/releases \
+              --dir out/recovered \
+              --pattern channel-zap.json \
+              --pattern channel-zap.json.sig \
+              --pattern release-index-zap.json \
+              --pattern release-index-zap.json.sig
+          cp out/recovered/channel-zap.json out/publication/channels/zap.json
+          cp out/recovered/channel-zap.json.sig out/publication/channels/zap.json.sig
+          cp out/recovered/release-index-zap.json out/publication/releases/zap.json
+          cp out/recovered/release-index-zap.json.sig out/publication/releases/zap.json.sig
+          zolt run --quiet -- verify-release-file \
+              --input out/publication/channels/zap.json \
+              --signature out/publication/channels/zap.json.sig
+          zolt run --quiet -- verify-release-file \
+              --input out/publication/releases/zap.json \
+              --signature out/publication/releases/zap.json.sig
+          version="$(jq -er '.version' out/publication/channels/zap.json)"
+          [[ "$RELEASE_TAG" == "zolt-zap-$version" ]]
+          [[ "$(jq -er '.channel' out/publication/channels/zap.json)" == zap ]]
+          [[ "$(jq -er '.channel' out/publication/releases/zap.json)" == zap ]]
+          [[ "$(jq -er '.versions[0].version' out/publication/releases/zap.json)" == "$version" ]]
+          expected_prefix="https://github.com/zoltsh/releases/releases/download/$RELEASE_TAG/"
+          jq -e \
+              --arg prefix "$expected_prefix" \
+              '.artifacts | length == 4 and all(.[]; (.archiveUrl | startswith($prefix)) and (.checksumUrl | startswith($prefix)))' \
+              out/publication/channels/zap.json >/dev/null
+
+      - name: Move recovered signed zap metadata last
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: nyc3
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_MAX_ATTEMPTS: "1"
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          scripts/publish-channel-metadata \
+              --channel zap \
+              --publication out/publication \
+              --expected-current-channel current/channels/zap.json
+
+      - name: Verify public zap recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+              if curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json \
+                      https://dist.zolt.sh/channels/zap.json \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json.sig \
+                      https://dist.zolt.sh/channels/zap.json.sig \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json \
+                      https://dist.zolt.sh/releases/zap.json \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json.sig \
+                      https://dist.zolt.sh/releases/zap.json.sig \
+                  && cmp -s out/publication/channels/zap.json out/public-channel.json \
+                  && cmp -s out/publication/channels/zap.json.sig out/public-channel.json.sig \
+                  && cmp -s out/publication/releases/zap.json out/public-index.json \
+                  && cmp -s out/publication/releases/zap.json.sig out/public-index.json.sig \
+                  && zolt run --quiet -- verify-release-file \
+                      --input out/public-channel.json \
+                      --signature out/public-channel.json.sig \
+                  && zolt run --quiet -- verify-release-file \
+                      --input out/public-index.json \
+                      --signature out/public-index.json.sig; then
+                  [[ "zolt-zap-$(jq -er '.version' out/public-channel.json)" == "$RELEASE_TAG" ]]
+                  cat out/public-channel.json >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+              fi
+              printf 'Public metadata has not converged after attempt %s\n' "$attempt"
+              sleep 10
+          done
+          printf 'error: public zap metadata did not converge to the recovered signed files\n' >&2
+          exit 1
