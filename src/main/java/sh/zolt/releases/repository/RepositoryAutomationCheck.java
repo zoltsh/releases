@@ -12,6 +12,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validateActionPins(root, errors);
         validateWorkflowPermissions(root, errors);
         validateTrustedControllerResolution(root, errors);
+        validateCandidateToolchainSync(root, errors);
         validateCandidateWorkflow(root, errors);
     }
 
@@ -73,13 +74,33 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         }
     }
 
+    private static void validateCandidateToolchainSync(Path root, List<String> errors) {
+        Path path = root.resolve(RepositoryRules.ZAP_CANDIDATE_WORKFLOW);
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String workflow = RepositoryFiles.read(path);
+        int build = workflow.indexOf(RepositoryRules.CANDIDATE_BUILD_JOB);
+        int checkout = workflow.indexOf(RepositoryRules.SOURCE_CHECKOUT, Math.max(0, build));
+        int sync = workflow.indexOf(RepositoryRules.SOURCE_TOOLCHAIN_SYNC, Math.max(0, checkout));
+        int distribution =
+                workflow.indexOf(RepositoryRules.SOURCE_ZAP_DISTRIBUTION, Math.max(0, checkout));
+        if (build < 0
+                || checkout < build
+                || sync < checkout
+                || distribution < checkout
+                || sync > distribution) {
+            errors.add(
+                    "zap candidate build must sync the source-managed Java toolchain before distribution");
+        }
+    }
+
     private static void validateCandidateWorkflow(Path root, List<String> errors) {
         if (!RepositoryRules.CANDIDATE_WORKFLOW_FILES.stream()
                 .allMatch(file -> Files.isRegularFile(root.resolve(file)))) {
             return;
         }
-        String workflow =
-                RepositoryFiles.read(root.resolve(".github/workflows/zap-candidate.yml"));
+        String workflow = RepositoryFiles.read(root.resolve(RepositoryRules.ZAP_CANDIDATE_WORKFLOW));
         for (String fragment : RepositoryRules.CANDIDATE_WORKFLOW_FRAGMENTS) {
             if (!workflow.contains(fragment)) {
                 errors.add("zap candidate workflow is missing required contract: " + fragment);

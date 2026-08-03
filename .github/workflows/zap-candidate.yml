@@ -163,6 +163,10 @@ jobs:
           git -C source checkout --detach "$SOURCE_SHA"
           test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
 
+      - name: Sync source-managed Java
+        working-directory: source
+        run: scripts/bootstrap-zolt-jvm --no-progress toolchain sync
+
       - name: Build and verify native zap distribution
         working-directory: source
         run: scripts/zap-distribution --target "$ZOLT_RELEASE_TARGET"

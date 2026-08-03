@@ -68,10 +68,16 @@ final class RepositoryRules {
             ".github/workflows/preview.yml",
             ".github/workflows/stable.yml",
             ".github/workflows/zap-candidate.yml");
+    static final String ZAP_CANDIDATE_WORKFLOW = ".github/workflows/zap-candidate.yml";
     static final String TRUSTED_ZOLT_SETUP = "uses: ./.github/actions/setup-zolt";
     static final String LOCKED_ZOLT_RESOLVE =
             "zolt resolve --locked --quiet --no-progress --color never";
     static final String TRUSTED_ZOLT_RUN = "zolt run ";
+    static final String CANDIDATE_BUILD_JOB = "\n  build:\n";
+    static final String SOURCE_CHECKOUT = "git -C source checkout --detach";
+    static final String SOURCE_TOOLCHAIN_SYNC =
+            "scripts/bootstrap-zolt-jvm --no-progress toolchain sync";
+    static final String SOURCE_ZAP_DISTRIBUTION = "scripts/zap-distribution --target";
     static final List<String> CANDIDATE_WORKFLOW_FRAGMENTS = List.of(
             "verify-source-run",
             "compute-zap-version",
