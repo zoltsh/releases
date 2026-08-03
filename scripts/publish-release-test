@@ -137,7 +137,7 @@ case "$operation" in
         cp "$file" "$root/assets/$tag/$name"
         digest="sha256:$(sha256sum "$file" | awk '{ print $1 }')"
         size="$(wc -c <"$file" | tr -d ' ')"
-        url="https://github.com/$repository/releases/download/$tag/$name"
+        url="https://github.com/$repository/releases/download/untagged-test-$tag/$name"
         jq \
             --arg name "$name" \
             --arg digest "$digest" \
@@ -150,9 +150,11 @@ case "$operation" in
         ;;
     edit)
         release="$root/releases/$tag.json"
+        repository=""
         while [[ "$#" -gt 0 ]]; do
             case "$1" in
                 --repo)
+                    repository="$2"
                     shift 2
                     ;;
                 --draft=false)
@@ -176,7 +178,12 @@ case "$operation" in
                     ;;
             esac
         done
-        jq '.draft = false | .immutable = true' "$release" >"$release.next"
+        asset_origin="https://github.com/$repository/releases/download/$tag/"
+        jq --arg asset_origin "$asset_origin" \
+            '.draft = false
+                | .immutable = true
+                | .assets |= map(.browser_download_url = ($asset_origin + .name))' \
+            "$release" >"$release.next"
         mv "$release.next" "$release"
         target="$(jq -r '.target_commitish' "$release")"
         jq -n --arg sha "$target" '{object:{type:"commit",sha:$sha}}' \

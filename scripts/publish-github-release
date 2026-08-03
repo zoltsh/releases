@@ -321,9 +321,12 @@ verify_remote_asset() {
     remote_digest="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .digest' "$release_json")"
     remote_size="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .size' "$release_json")"
     remote_url="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .browser_download_url' "$release_json")"
-    if [[ "$remote_digest" != "$expected_digest" || "$remote_size" != "$expected_size" \
-        || "$remote_url" != "$asset_origin/$name" ]]; then
+    if [[ "$remote_digest" != "$expected_digest" || "$remote_size" != "$expected_size" ]]; then
         printf 'error: GitHub Release asset differs from staged bytes: %s\n' "$name" >&2
+        exit 1
+    fi
+    if [[ "$draft" != "true" && "$remote_url" != "$asset_origin/$name" ]]; then
+        printf 'error: published GitHub Release asset URL is not final: %s\n' "$name" >&2
         exit 1
     fi
 }
