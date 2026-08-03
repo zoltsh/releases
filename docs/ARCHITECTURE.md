@@ -7,8 +7,8 @@ This document describes how Zolt turns trusted source into immutable releases wi
 giving candidate code access to publication credentials.
 
 > [!NOTE]
-> Automatic zap publication is implemented against the existing `dist.zolt.sh`
-> distribution. Preview and stable publication remain disabled.
+> Automatic zap publication stores immutable files in GitHub Releases and moves signed
+> metadata at `dist.zolt.sh` last. Preview and stable publication remain disabled.
 
 ## Contents
 
@@ -40,9 +40,9 @@ zoltsh/releases
   verify the files
   publish through a separate trusted job
         |
-        +--> DigitalOcean Spaces: immutable version files
+        +--> GitHub Releases: immutable files and evidence
         |
-        +--> signed channel and release index: which release is current
+        +--> dist.zolt.sh: signed pointer to the current GitHub Release
 ```
 
 This separation means a source maintainer can trigger a zap build without gaining
@@ -68,41 +68,40 @@ preview or stable release access.
 Zap stays automatic. Preview requires a deliberate tag. Stable adds one protected
 approval.
 
-Zap currently uses the existing public origin:
+All three channels use GitHub Releases for downloadable files. Their signed metadata
+uses one public origin:
 
 ```text
 https://dist.zolt.sh
 ```
 
-The stable and preview origins are not enabled. Before either channel is enabled, its
-storage, signing key, and public origin must be defined and isolated from zap.
+The stable and preview workflows are not enabled. Before either is enabled, its build,
+signing, and approval path must be completed and reviewed.
 
 `https://dist.zolt.sh/install.sh` is the current installer. Until stable exists, it
 follows `channels/zap.json`.
 
 ## Storage
 
-Zap uses one DigitalOcean Space in `nyc3`:
+| Location | Stores |
+| :--- | :--- |
+| GitHub Releases | Native archives, checksums, manifests, release records, source evidence, and signed metadata snapshots |
+| `zolt-dist` Space | The installer and current signed channel/release-index metadata |
 
-```text
-bucket: zolt-dist
-origin: https://dist.zolt.sh
-```
+Every channel publishes one complete immutable GitHub Release. Zap and preview releases
+are prereleases; stable releases are normal releases and may be marked latest. Release
+tags and assets are never reused or replaced. A retry must verify the existing tag,
+asset set, sizes, and SHA-256 digests before accepting it.
 
-The Space stores versioned archives, checksum sidecars, the combined release manifest,
-the candidate release record, source-CI evidence, and the two signed mutable files.
-Versioned objects live under `artifacts/zap/<version>/` and are never replaced with
-different bytes. The publisher reads an existing object back and refuses any digest
-mismatch. The Space must have object versioning enabled for recovery from an
-out-of-band administrative overwrite.
+The mutable zap files are `channels/zap.json` and `releases/zap.json`, each with an
+Ed25519 `.sig` sidecar. The publisher first makes the GitHub Release immutable, then
+writes the release-index pair, the channel signature, and `channels/zap.json` last.
+The archive URLs in the signed channel point directly at that immutable GitHub Release.
 
-The mutable files are `channels/zap.json` and `releases/zap.json`, each with an
-Ed25519 `.sig` sidecar. The publisher writes every immutable object first, the release
-index pair next, the channel signature next, and `channels/zap.json` last.
-
-This single-Space layout is the initial zap topology, not permission sharing for future
-channels. Preview and stable must get separately reviewed storage and credentials before
-their policy status changes from `disabled`.
+DigitalOcean object versioning is optional. Each GitHub Release contains immutable
+copies of the signed channel and index produced for that publication, so operators can
+reconstruct channel state after an accidental metadata overwrite. Preview and stable
+will use the same storage split when their policy status changes from `disabled`.
 
 ## Roles and access
 
@@ -349,8 +348,8 @@ Offer two install paths:
 
 1. **Convenient:** use the HTTPS installer, which verifies the downloaded archive
    checksum.
-2. **Pinned:** download a versioned archive from its immutable
-   `dist.zolt.sh/artifacts/zap/<version>/` path and verify its published checksum.
+2. **Pinned:** download a versioned archive from its immutable GitHub Release and verify
+   its published checksum.
 
 Production CI uses the pinned path.
 
@@ -379,14 +378,17 @@ candidate passes
   -> verify the currently public signed channel and release index
   -> reject stale or divergent source history
   -> sign the new channel and release index with the existing zap key
-  -> publish immutable zap files to zolt-dist
+  -> create or resume the exact draft GitHub Release
+  -> verify every GitHub asset size and SHA-256 digest
+  -> publish the GitHub Release immutably
   -> publish the release index pair
   -> change the zap channel last
 ```
 
-Zap needs no human approval. Its publisher is hard-coded to zap and never accepts an
-arbitrary channel input. The signing and Spaces secrets are scoped only to the signing
-and upload steps. Candidate source is never checked out or executed on that runner.
+Zap needs no human approval. Its workflow is hard-coded to zap. Shared publication code
+accepts a channel, but each workflow supplies a fixed value and has only that channel's
+signing environment. The signing and metadata credentials are scoped only to their
+steps. Candidate source is never checked out or executed on that runner.
 
 ### Preview publication
 
@@ -458,14 +460,14 @@ digest.
 
 ## Hosting
 
-The initial zap distribution uses the existing `zolt-dist` Space and
-`https://dist.zolt.sh` CDN origin for both immutable version files and signed channel
-metadata. Production CI should download a pinned version instead of polling the moving
+GitHub Releases serves every large or immutable file. The existing `zolt-dist` Space and
+`https://dist.zolt.sh` serve only the installer and small signed moving metadata.
+Production CI should use a pinned GitHub Release URL and checksum instead of polling a
 channel.
 
-If usage outgrows Spaces, keep the public URLs stable while migrating the origin. A
-future backend change must preserve the signed JSON contract and immutable version
-paths.
+The metadata host can move later without relocating release assets. A future metadata
+backend must preserve the signed JSON contract and channel URLs used by existing
+clients.
 
 ## Stable release checklist
 

@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+channel=""
+publication=""
+expected_current_channel=""
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --channel)
+            channel="${2:?missing value for --channel}"
+            shift 2
+            ;;
+        --publication)
+            publication="${2:?missing value for --publication}"
+            shift 2
+            ;;
+        --expected-current-channel)
+            expected_current_channel="${2:?missing value for --expected-current-channel}"
+            shift 2
+            ;;
+        *)
+            printf 'error: unknown argument %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ -z "$channel" || -z "$publication" || -z "$expected_current_channel" ]]; then
+    printf 'usage: scripts/publish-channel-metadata --channel <zap|preview|stable> --publication <directory> --expected-current-channel <file>\n' >&2
+    exit 2
+fi
+case "$channel" in
+    zap) expected_key_id="zolt-release-2026" ;;
+    preview) expected_key_id="zolt-preview-2026" ;;
+    stable) expected_key_id="zolt-stable-2026" ;;
+    *)
+        printf 'error: unsupported release channel: %s\n' "$channel" >&2
+        exit 2
+        ;;
+esac
+if [[ ! -d "$publication" || ! -f "$expected_current_channel" ]]; then
+    printf 'error: publication directory and expected current channel must exist\n' >&2
+    exit 2
+fi
+publication="$(cd "$publication" && pwd)"
+expected_current_channel="$(cd "$(dirname "$expected_current_channel")" && pwd)/$(basename "$expected_current_channel")"
+
+aws_cli="${ZOLT_PUBLISH_AWS:-aws}"
+if ! command -v "$aws_cli" >/dev/null 2>&1; then
+    printf 'error: channel publication requires the AWS CLI on PATH\n' >&2
+    exit 2
+fi
+if ! command -v jq >/dev/null 2>&1; then
+    printf 'error: channel publication requires jq on PATH\n' >&2
+    exit 2
+fi
+
+bucket="zolt-dist"
+endpoint="https://nyc3.digitaloceanspaces.com"
+mutable_cache="no-cache"
+channel_json="$publication/channels/$channel.json"
+channel_signature="$publication/channels/$channel.json.sig"
+index_json="$publication/releases/$channel.json"
+index_signature="$publication/releases/$channel.json.sig"
+for file in "$channel_json" "$channel_signature" "$index_json" "$index_signature"; do
+    if [[ ! -f "$file" ]]; then
+        printf 'error: staged channel metadata is missing: %s\n' "$file" >&2
+        exit 1
+    fi
+done
+if [[ "$(jq -er '.channel' "$channel_json")" != "$channel" \
+    || "$(jq -er '.channel' "$index_json")" != "$channel" \
+    || "$(jq -er '.versions[0].version' "$index_json")" != "$(jq -er '.version' "$channel_json")" ]]; then
+    printf 'error: signed moving metadata does not match channel %s\n' "$channel" >&2
+    exit 1
+fi
+for sidecar in "$channel_signature" "$index_signature"; do
+    if [[ "$(awk -F ': ' '$1 == "version" { print $2 }' "$sidecar")" != "zolt-ed25519-v1" \
+        || "$(awk -F ': ' '$1 == "keyId" { print $2 }' "$sidecar")" != "$expected_key_id" \
+        || -z "$(awk -F ': ' '$1 == "signature" { print $2 }' "$sidecar")" ]]; then
+        printf 'error: signed moving metadata has the wrong signature format or key: %s\n' "$sidecar" >&2
+        exit 1
+    fi
+done
+
+aws() {
+    "$aws_cli" --endpoint-url "$endpoint" "$@"
+}
+
+download_object() {
+    local key="$1"
+    local output="$2"
+    aws s3api get-object --bucket "$bucket" --key "$key" "$output" >/dev/null
+}
+
+verify_remote_bytes() {
+    local file="$1"
+    local key="$2"
+    local downloaded
+    downloaded="$(mktemp)"
+    if ! download_object "$key" "$downloaded"; then
+        rm -f "$downloaded"
+        printf 'error: could not read back channel metadata s3://%s/%s\n' "$bucket" "$key" >&2
+        exit 1
+    fi
+    if ! cmp -s "$file" "$downloaded"; then
+        rm -f "$downloaded"
+        printf 'error: remote channel metadata differs for s3://%s/%s\n' "$bucket" "$key" >&2
+        exit 1
+    fi
+    rm -f "$downloaded"
+}
+
+publish_metadata() {
+    local file="$1"
+    local key="$2"
+    local content_type="$3"
+    aws s3api put-object \
+        --bucket "$bucket" \
+        --key "$key" \
+        --body "$file" \
+        --acl public-read \
+        --cache-control "$mutable_cache" \
+        --content-type "$content_type" >/dev/null
+    verify_remote_bytes "$file" "$key"
+}
+
+require_current_channel_unchanged() {
+    local downloaded
+    downloaded="$(mktemp)"
+    if ! download_object "channels/$channel.json" "$downloaded"; then
+        rm -f "$downloaded"
+        printf 'error: could not read the current %s channel metadata\n' "$channel" >&2
+        exit 1
+    fi
+    if ! cmp -s "$expected_current_channel" "$downloaded"; then
+        rm -f "$downloaded"
+        printf 'error: %s channel changed after publication preparation; refusing stale update\n' "$channel" >&2
+        exit 1
+    fi
+    rm -f "$downloaded"
+}
+
+require_current_channel_unchanged
+publish_metadata "$index_signature" "releases/$channel.json.sig" "text/plain"
+publish_metadata "$index_json" "releases/$channel.json" "application/json"
+require_current_channel_unchanged
+publish_metadata "$channel_signature" "channels/$channel.json.sig" "text/plain"
+publish_metadata "$channel_json" "channels/$channel.json" "application/json"
+
+printf 'Changed signed %s channel metadata after immutable GitHub publication\n' "$channel"

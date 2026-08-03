@@ -10,8 +10,8 @@ Use these procedures when a release fails or release authority may be compromise
 > deployment IDs before changing anything.
 
 > [!IMPORTANT]
-> Zap publication is enabled for `zolt-dist`. Add the real owner and incident-contact
-> details before enabling preview or stable.
+> Zap publication uses immutable GitHub Releases and metadata in `zolt-dist`. Add the
+> real owner and incident-contact details before enabling preview or stable.
 
 ## First response
 
@@ -29,16 +29,15 @@ Use these procedures when a release fails or release authority may be compromise
 1. Do not change the zap channel if the build, checks, revalidation, signing, or upload
    fails.
 2. Leave the previous zap release current.
-3. If files were uploaded but the channel did not change, leave them unreferenced until
-   a reviewed cleanup removes the whole version; never replace them with different
-   bytes.
-4. If the release index changed but the channel did not, rerun the same publisher. Its
-   immutable writes are idempotent and the channel JSON remains the last write.
+3. If the immutable GitHub Release exists but the channel did not change, rerun the same
+   publisher. It verifies and reuses the exact release before retrying metadata.
+4. If the release index changed but the channel did not, rerun the same publisher. The
+   channel JSON remains the last write.
 5. If the channel changed to a bad release, disable `zap publish`, preserve the signed
    bad metadata, and use a reviewed recovery change to publish newly signed channel and
    release-index files that point to the last good immutable version.
-6. Keep the logs, release record, source evidence, staged signatures, and Space object
-   version IDs.
+6. Keep the logs, GitHub Release and asset IDs, release record, source evidence, and
+   staged signatures. Keep Space object version IDs only when versioning is enabled.
 
 ## Preview failure
 

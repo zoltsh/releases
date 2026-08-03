@@ -69,6 +69,18 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 "stable",
                 "stable must be the default channel",
                 errors);
+        requireString(
+                release,
+                "large_artifact_backend",
+                "github-releases",
+                "all release assets must use immutable GitHub Releases",
+                errors);
+        requireString(
+                release,
+                "metadata_backend",
+                "s3-compatible",
+                "signed moving metadata must use the existing S3-compatible origin",
+                errors);
         requireBoolean(
                 stable, "default", true, "stable channel must be marked default", errors);
         requireLong(zap, "approval_count", 0L, "zap must require zero release approvals", errors);
@@ -82,15 +94,25 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 1L,
                 "stable must require one protected approval",
                 errors);
-        List<TomlTable> activeChannels = List.of(stable, preview, zap).stream()
-                .filter(table -> !"disabled".equals(table.getString("status")))
-                .toList();
-        distinct(activeChannels, "origin", "active channel origins must be distinct", errors);
-        distinct(activeChannels, "bucket", "active channel buckets must be distinct", errors);
+        List<TomlTable> allChannels = List.of(stable, preview, zap);
+        for (TomlTable configuredChannel : allChannels) {
+            requireString(
+                    configuredChannel,
+                    "origin",
+                    "https://dist.zolt.sh",
+                    "all channels must use the shared signed metadata origin",
+                    errors);
+            requireString(
+                    configuredChannel,
+                    "bucket",
+                    "zolt-dist",
+                    "all channels must use the metadata-only zolt-dist Space",
+                    errors);
+        }
         distinct(
-                activeChannels,
+                allChannels,
                 "signing_key_id",
-                "active channel signing key IDs must be distinct",
+                "channel signing key IDs must be distinct",
                 errors);
 
         requireString(

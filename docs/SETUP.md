@@ -36,7 +36,7 @@ The script:
 - sets the basic repository options
 - makes the default Actions token read-only
 - creates `channel-zap`, `channel-preview`, and `channel-stable`
-- enables immutable GitHub Releases for future preview and stable work
+- enables immutable GitHub Releases for every channel
 
 The repository should be public so its release process and evidence are visible.
 
@@ -91,7 +91,9 @@ The repository test suite rejects unpinned actions.
 
 The local `setup-zolt` action pins the exact native Zolt archive and its SHA-256.
 Review both values like a dependency update. They must not come from workflow input
-or the candidate commit.
+or the candidate commit. Its current pin is the final legacy `dist.zolt.sh` bootstrap
+archive. After the first GitHub-hosted zap is public, update the pin to that immutable
+GitHub Release in a separate reviewed change.
 
 ## 5. Configure environments
 
@@ -159,9 +161,11 @@ It cannot:
 
 Rotate the App key if the source workflow or repository is compromised.
 
-## 7. Configure zap storage and signing
+## 7. Configure zap metadata and signing
 
-Zap uses the existing DigitalOcean distribution:
+All archives, checksums, manifests, records, and evidence are GitHub Release assets in
+`zoltsh/releases`. Zap uses the existing DigitalOcean distribution only for its small
+signed moving metadata:
 
 ```text
 Space:    zolt-dist
@@ -171,9 +175,14 @@ Origin:   https://dist.zolt.sh
 Key ID:   zolt-release-2026
 ```
 
-Enable object versioning on `zolt-dist`. Keep bucket listing private and use a Spaces
-key restricted to the `zolt-dist` Space. The publisher needs object read and write
-access so it can refuse a versioned object whose remote bytes differ.
+Keep bucket listing private and use a Spaces key restricted to `zolt-dist`. The
+publisher needs object read and write access only for `channels/zap.json`,
+`releases/zap.json`, and their signature sidecars. It never stores release archives in
+Spaces.
+
+Object versioning is optional recovery convenience, not a publication prerequisite.
+Every immutable GitHub Release contains signed snapshots of its channel and release
+index, so the moving metadata can be reconstructed without Space object history.
 
 Add these secrets to the `channel-zap` environment:
 
@@ -189,8 +198,9 @@ the match before uploading. If that private key has been lost, stop and design a
 client-compatible key rotation; creating a replacement under the same key ID will not
 work.
 
-The workflow fixes the bucket, region, endpoint, origin, and key ID in reviewed code.
-They are not workflow inputs or secrets.
+The workflow uses its repository-scoped `GITHUB_TOKEN` to create the immutable GitHub
+Release. It fixes the GitHub repository, Space, region, endpoint, metadata origin, and
+key ID in reviewed code. They are not workflow inputs or secrets.
 
 ## 8. Start automatic zap publication
 
@@ -199,8 +209,9 @@ rerun the source CI dispatcher or allow the next successful `zoltsh/zolt` `main`
 run to dispatch a candidate. A successful `zap candidate` run automatically starts
 `zap publish`; there is no environment approval.
 
-The first successful publisher run changes the public zap channel. Before triggering
-it, confirm the current signed files at:
+The first successful publisher run creates an immutable prerelease under
+`https://github.com/zoltsh/releases/releases`, then changes the public zap channel.
+Before triggering it, confirm the current signed files at:
 
 ```text
 https://dist.zolt.sh/channels/zap.json
@@ -222,7 +233,7 @@ Before any public release:
 - [ ] Branch and tag rules are active.
 - [ ] Stable has one reviewer and prevents self-review.
 - [ ] Zap and preview have no reviewers.
-- [ ] `zolt-dist` object versioning is enabled.
-- [ ] `channel-zap` has the existing Spaces key and matching Ed25519 private key.
+- [ ] `channel-zap` has the existing metadata-only Spaces key and matching Ed25519 private key.
+- [ ] No release archive is uploaded to `zolt-dist`.
 - [ ] The live zap channel and release index verify with `zolt-release-2026`.
 - [ ] `scripts/check` passes.

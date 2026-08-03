@@ -41,9 +41,9 @@ channel. Production automation should use an exact version and checksum.
 
 | Channel | Best for | Origin |
 | :--- | :--- | :--- |
-| `stable` | Recommended releases; not enabled yet | [`dist.zolt.sh`](https://dist.zolt.sh) |
-| `preview` | Alpha, beta, and release candidates; not enabled yet | Reserved |
-| `zap` | The latest healthy build from `main` | [`dist.zolt.sh`](https://dist.zolt.sh/channels/zap.json) |
+| `stable` | Recommended releases; not enabled yet | Signed pointer at `dist.zolt.sh` |
+| `preview` | Alpha, beta, and release candidates; not enabled yet | Signed pointer at `dist.zolt.sh` |
+| `zap` | The latest healthy build from `main` | [Signed pointer at `dist.zolt.sh`](https://dist.zolt.sh/channels/zap.json) |
 
 > [!TIP]
 > Production builds should pin an exact version and checksum instead of following a
@@ -59,9 +59,11 @@ channel. Production automation should use an exact version and checksum.
 | Release record | Source, workflow, controller, and candidate file identities |
 | Source CI evidence | The exact successful source run used for the build |
 
-Zap files live at immutable versioned paths in the `zolt-dist` DigitalOcean Space.
-Signed channel and release-index files tell clients which version is current. Preview
-and stable distribution remain disabled until their separate contracts are built.
+Release files for every channel live in immutable
+[GitHub Releases](https://github.com/zoltsh/releases/releases). DigitalOcean stores only
+the small signed channel and release-index files that tell existing clients which GitHub
+Release is current. Preview and stable publication remain disabled until their build and
+approval workflows are complete; they use the same GitHub asset contract as zap.
 
 ## About this repository
 

@@ -27,11 +27,11 @@ final class PublicationSchemaValidator {
     }
 
     void validateChannel(JsonNode document) {
-        validate(channel, document, "zap channel manifest");
+        validate(channel, document, "channel manifest");
     }
 
     void validateIndex(JsonNode document) {
-        validate(index, document, "zap release index");
+        validate(index, document, "release index");
     }
 
     private static Schema load(Path path) {

@@ -9,7 +9,7 @@ source_branch = "main"
 
 [release]
 default_channel = "stable"
-large_artifact_backend = "s3-compatible"
+large_artifact_backend = "github-releases"
 metadata_backend = "s3-compatible"
 production_ci_follows_channel = false
 
@@ -32,8 +32,8 @@ default = false
 source = "protected-prerelease-tag"
 human_gate = "tag-creation"
 approval_count = 0
-origin = "https://preview.dist.zolt.sh"
-bucket = "zolt-channel-preview"
+origin = "https://dist.zolt.sh"
+bucket = "zolt-dist"
 signing_key_id = "zolt-preview-2026"
 retention = "bounded"
 publish_central = false

@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+temporary="$(mktemp -d)"
+trap 'rm -rf "$temporary"' EXIT
+fake_gh="$temporary/gh"
+github_store="$temporary/github"
+github_log="$temporary/github.log"
+mkdir -p "$github_store/releases" "$github_store/tags" "$github_store/assets"
+
+cat >"$fake_gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$ZOLT_FAKE_GH_ROOT"
+command="$1"
+shift
+if [[ "$command" == "api" ]]; then
+    endpoint="${1#/}"
+    if [[ "$endpoint" =~ ^repos/[^/]+/[^/]+/releases/tags/(.+)$ ]]; then
+        tag="${BASH_REMATCH[1]}"
+        file="$root/releases/$tag.json"
+    elif [[ "$endpoint" =~ ^repos/[^/]+/[^/]+/git/ref/tags/(.+)$ ]]; then
+        tag="${BASH_REMATCH[1]}"
+        file="$root/tags/$tag.json"
+    else
+        printf 'error: unsupported fake GitHub API endpoint: %s\n' "$endpoint" >&2
+        exit 2
+    fi
+    if [[ ! -f "$file" ]]; then
+        printf 'HTTP 404: Not Found\n' >&2
+        exit 1
+    fi
+    cat "$file"
+    exit 0
+fi
+if [[ "$command" != "release" ]]; then
+    exit 2
+fi
+
+operation="$1"
+tag="$2"
+shift 2
+case "$operation" in
+    create)
+        target=""
+        repository=""
+        prerelease=false
+        while [[ "$#" -gt 0 ]]; do
+            case "$1" in
+                --target)
+                    target="$2"
+                    shift 2
+                    ;;
+                --repo)
+                    repository="$2"
+                    shift 2
+                    ;;
+                --prerelease)
+                    prerelease=true
+                    shift
+                    ;;
+                --title | --notes-file)
+                    shift 2
+                    ;;
+                --draft | --latest=false)
+                    shift
+                    ;;
+                *)
+                    printf 'error: unsupported fake release-create argument: %s\n' "$1" >&2
+                    exit 2
+                    ;;
+            esac
+        done
+        jq -n \
+            --arg tag "$tag" \
+            --arg target "$target" \
+            --argjson prerelease "$prerelease" \
+            '{tag_name:$tag,target_commitish:$target,draft:true,prerelease:$prerelease,immutable:false,assets:[]}' \
+            >"$root/releases/$tag.json"
+        jq -n --arg sha "$target" '{object:{type:"commit",sha:$sha}}' \
+            >"$root/tags/$tag.json"
+        printf 'create %s %s\n' "$tag" "$repository" >>"$ZOLT_FAKE_GH_LOG"
+        ;;
+    upload)
+        file="$1"
+        shift
+        if [[ "$1" != "--repo" ]]; then
+            exit 2
+        fi
+        repository="$2"
+        name="$(basename "$file")"
+        release="$root/releases/$tag.json"
+        if jq -e --arg name "$name" '.assets[] | select(.name == $name)' "$release" >/dev/null; then
+            printf 'asset already exists\n' >&2
+            exit 1
+        fi
+        mkdir -p "$root/assets/$tag"
+        cp "$file" "$root/assets/$tag/$name"
+        digest="sha256:$(sha256sum "$file" | awk '{ print $1 }')"
+        size="$(wc -c <"$file" | tr -d ' ')"
+        url="https://github.com/$repository/releases/download/$tag/$name"
+        jq \
+            --arg name "$name" \
+            --arg digest "$digest" \
+            --argjson size "$size" \
+            --arg url "$url" \
+            '.assets += [{name:$name,digest:$digest,size:$size,browser_download_url:$url}]' \
+            "$release" >"$release.next"
+        mv "$release.next" "$release"
+        printf 'upload %s %s\n' "$tag" "$name" >>"$ZOLT_FAKE_GH_LOG"
+        ;;
+    edit)
+        release="$root/releases/$tag.json"
+        while [[ "$#" -gt 0 ]]; do
+            case "$1" in
+                --repo)
+                    shift 2
+                    ;;
+                --draft=false)
+                    shift
+                    ;;
+                --prerelease=true)
+                    jq '.prerelease = true' "$release" >"$release.next"
+                    mv "$release.next" "$release"
+                    shift
+                    ;;
+                --prerelease=false)
+                    jq '.prerelease = false' "$release" >"$release.next"
+                    mv "$release.next" "$release"
+                    shift
+                    ;;
+                --latest=true | --latest=false)
+                    shift
+                    ;;
+                *)
+                    exit 2
+                    ;;
+            esac
+        done
+        jq '.draft = false | .immutable = true' "$release" >"$release.next"
+        mv "$release.next" "$release"
+        printf 'publish %s\n' "$tag" >>"$ZOLT_FAKE_GH_LOG"
+        ;;
+    *)
+        exit 2
+        ;;
+esac
+FAKE_GH
+chmod +x "$fake_gh"
+
+make_publication() {
+    local channel="$1"
+    local version="$2"
+    local tag="$3"
+    local key_id="$4"
+    local publication="$temporary/publication-$channel"
+    local version_directory="$publication/artifacts/$channel/$version"
+    mkdir -p "$version_directory" "$publication/channels" "$publication/releases"
+    for target in linux-arm64 linux-x64 macos-arm64 macos-x64; do
+        archive="$version_directory/zolt-${version}-${target}.tar.gz"
+        printf 'archive-%s-%s\n' "$channel" "$target" >"$archive"
+        digest="$(sha256sum "$archive" | awk '{ print $1 }')"
+        printf '%s  %s\n' "$digest" "$(basename "$archive")" >"$archive.sha256"
+    done
+    printf '{"name":"zolt","version":"%s"}\n' "$version" \
+        >"$version_directory/release-manifest.json"
+    printf '{"channel":"%s","state":"candidate","version":"%s"}\n' "$channel" "$version" \
+        >"$version_directory/release-record.json"
+    printf '{}\n' >"$version_directory/source-run.json"
+    {
+        printf '{"channel":"%s","version":"%s","artifacts":[' "$channel" "$version"
+        separator=""
+        for target in linux-arm64 linux-x64 macos-arm64 macos-x64; do
+            archive="zolt-${version}-${target}.tar.gz"
+            digest="$(awk '{ print $1; exit }' "$version_directory/$archive.sha256")"
+            printf '%s{"target":"%s","archive":"%s","archiveUrl":"https://github.com/zoltsh/releases/releases/download/%s/%s","checksumUrl":"https://github.com/zoltsh/releases/releases/download/%s/%s.sha256","sha256":"%s"}' \
+                "$separator" "$target" "$archive" "$tag" "$archive" "$tag" "$archive" "$digest"
+            separator=,
+        done
+        printf ']}\n'
+    } >"$publication/channels/$channel.json"
+    printf 'version: zolt-ed25519-v1\nkeyId: %s\nsignature: test\n' "$key_id" \
+        >"$publication/channels/$channel.json.sig"
+    printf '{"channel":"%s","versions":[{"version":"%s"}]}\n' "$channel" "$version" \
+        >"$publication/releases/$channel.json"
+    printf 'version: zolt-ed25519-v1\nkeyId: %s\nsignature: test\n' "$key_id" \
+        >"$publication/releases/$channel.json.sig"
+    printf '%s\n' "$publication"
+}
+
+export ZOLT_FAKE_GH_ROOT="$github_store"
+export ZOLT_FAKE_GH_LOG="$github_log"
+export ZOLT_PUBLISH_GH="$fake_gh"
+target_sha="$(printf 'a%.0s' {1..40})"
+
+zap_version="0.1.0-zap.20260803.aaaaaaaaaaaa"
+zap_tag="zolt-zap-$zap_version"
+zap_publication="$(make_publication zap "$zap_version" "$zap_tag" zolt-release-2026)"
+scripts/publish-github-release \
+    --channel zap \
+    --publication "$zap_publication" \
+    --target-sha "$target_sha"
+jq -e '.draft == false and .prerelease == true and .immutable == true and (.assets | length == 15)' \
+    "$github_store/releases/$zap_tag.json" >/dev/null
+upload_count="$(grep -c '^upload ' "$github_log")"
+scripts/publish-github-release \
+    --channel zap \
+    --publication "$zap_publication" \
+    --target-sha "$target_sha" >/dev/null
+if [[ "$(grep -c '^upload ' "$github_log")" -ne "$upload_count" ]]; then
+    printf 'error: idempotent GitHub publication uploaded an asset again\n' >&2
+    exit 1
+fi
+
+preview_version="0.2.0-rc.1"
+preview_tag="zolt-preview-v$preview_version"
+preview_publication="$(make_publication preview "$preview_version" "$preview_tag" zolt-preview-2026)"
+scripts/publish-github-release \
+    --channel preview \
+    --publication "$preview_publication" \
+    --target-sha "$target_sha" >/dev/null
+jq -e '.prerelease == true and .immutable == true' \
+    "$github_store/releases/$preview_tag.json" >/dev/null
+jq -n --arg sha "$(printf 'b%.0s' {1..40})" '{object:{type:"commit",sha:$sha}}' \
+    >"$github_store/tags/$preview_tag.json"
+if scripts/publish-github-release \
+    --channel preview \
+    --publication "$preview_publication" \
+    --target-sha "$target_sha" >"$temporary/tag-mismatch.log" 2>&1; then
+    printf 'error: GitHub Release tag target mismatch was accepted\n' >&2
+    exit 1
+fi
+grep -F 'does not point to controller commit' "$temporary/tag-mismatch.log" >/dev/null
+
+stable_version="0.2.0"
+stable_tag="zolt-v$stable_version"
+stable_publication="$(make_publication stable "$stable_version" "$stable_tag" zolt-stable-2026)"
+scripts/publish-github-release \
+    --channel stable \
+    --publication "$stable_publication" \
+    --target-sha "$target_sha" >/dev/null
+jq -e '.prerelease == false and .immutable == true' \
+    "$github_store/releases/$stable_tag.json" >/dev/null
+
+printf 'tampered\n' >"$zap_publication/artifacts/zap/$zap_version/zolt-$zap_version-linux-x64.tar.gz"
+tampered_digest="$(sha256sum "$zap_publication/artifacts/zap/$zap_version/zolt-$zap_version-linux-x64.tar.gz" | awk '{ print $1 }')"
+printf '%s  %s\n' "$tampered_digest" "zolt-$zap_version-linux-x64.tar.gz" \
+    >"$zap_publication/artifacts/zap/$zap_version/zolt-$zap_version-linux-x64.tar.gz.sha256"
+if scripts/publish-github-release \
+    --channel zap \
+    --publication "$zap_publication" \
+    --target-sha "$target_sha" >"$temporary/tamper.log" 2>&1; then
+    printf 'error: immutable GitHub Release asset mismatch was accepted\n' >&2
+    exit 1
+fi
+grep -F 'GitHub Release asset differs from staged bytes' "$temporary/tamper.log" >/dev/null
+
+fake_aws="$temporary/aws"
+spaces_store="$temporary/spaces"
+spaces_log="$temporary/spaces.log"
+mkdir -p "$spaces_store/zolt-dist/channels"
+cat >"$fake_aws" <<'FAKE_AWS'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "--endpoint-url" ]]; then
+    shift 2
+fi
+[[ "$1" == "s3api" ]]
+operation="$2"
+shift 2
+bucket=""
+key=""
+body=""
+output=""
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --bucket) bucket="$2"; shift 2 ;;
+        --key) key="$2"; shift 2 ;;
+        --body) body="$2"; shift 2 ;;
+        --acl | --cache-control | --content-type) shift 2 ;;
+        *) output="$1"; shift ;;
+    esac
+done
+path="$ZOLT_FAKE_AWS_ROOT/$bucket/$key"
+case "$operation" in
+    get-object)
+        [[ -f "$path" ]]
+        cp "$path" "$output"
+        printf '{}\n'
+        ;;
+    put-object)
+        mkdir -p "$(dirname "$path")"
+        cp "$body" "$path"
+        printf '%s\n' "$key" >>"$ZOLT_FAKE_AWS_LOG"
+        printf '{}\n'
+        ;;
+    *) exit 2 ;;
+esac
+FAKE_AWS
+chmod +x "$fake_aws"
+previous="$temporary/previous-channel.json"
+printf '{"version":"previous"}\n' >"$previous"
+cp "$previous" "$spaces_store/zolt-dist/channels/zap.json"
+export ZOLT_FAKE_AWS_ROOT="$spaces_store"
+export ZOLT_FAKE_AWS_LOG="$spaces_log"
+export ZOLT_PUBLISH_AWS="$fake_aws"
+scripts/publish-channel-metadata \
+    --channel zap \
+    --publication "$zap_publication" \
+    --expected-current-channel "$previous"
+if grep -q '^artifacts/' "$spaces_log"; then
+    printf 'error: channel metadata publisher uploaded release artifacts to Spaces\n' >&2
+    exit 1
+fi
+if [[ "$(tail -n 1 "$spaces_log")" != "channels/zap.json" ]]; then
+    printf 'error: channel JSON was not uploaded last\n' >&2
+    exit 1
+fi
+cmp "$zap_publication/channels/zap.json" "$spaces_store/zolt-dist/channels/zap.json"
+if scripts/publish-channel-metadata \
+    --channel zap \
+    --publication "$zap_publication" \
+    --expected-current-channel "$previous" >"$temporary/stale.log" 2>&1; then
+    printf 'error: stale channel metadata update was accepted\n' >&2
+    exit 1
+fi
+grep -F 'refusing stale update' "$temporary/stale.log" >/dev/null
+scripts/publish-channel-metadata \
+    --channel zap \
+    --publication "$zap_publication" \
+    --expected-current-channel "$zap_publication/channels/zap.json" >/dev/null
+
+printf 'GitHub Release and metadata-only channel publisher tests passed\n'

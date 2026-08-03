@@ -75,6 +75,13 @@ final class ZapPublicationPreparerTest {
         assertEquals(
                 SOURCE_SHA,
                 JsonSupport.read(first.resolve("channels/zap.json")).path("commit").asText());
+        String archiveUrl = JsonSupport.read(first.resolve("channels/zap.json"))
+                .path("artifacts")
+                .get(0)
+                .path("archiveUrl")
+                .asText();
+        assertTrue(archiveUrl.startsWith(
+                "https://github.com/zoltsh/releases/releases/download/zolt-zap-" + VERSION + "/"));
         assertEquals(
                 SOURCE_SHA,
                 JsonSupport.read(first.resolve("artifacts/zap")

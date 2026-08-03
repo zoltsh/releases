@@ -15,6 +15,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validateCandidateToolchainSync(root, errors);
         validateCandidateWorkflow(root, errors);
         validatePublishWorkflow(root, errors);
+        validatePublicationBackends(root, errors);
     }
 
     private static void validateActionPins(Path root, List<String> errors) {
@@ -159,10 +160,32 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap publish workflow contains forbidden candidate authority: " + fragment);
             }
         }
-        int immutable = workflow.indexOf("scripts/publish-zap");
+        int immutable = workflow.indexOf("scripts/publish-github-release");
+        int metadata = workflow.indexOf("scripts/publish-channel-metadata");
         int publicVerification = workflow.indexOf("Verify public zap publication");
-        if (immutable < 0 || publicVerification < immutable) {
-            errors.add("zap publish workflow must verify the public result after publication");
+        if (immutable < 0 || metadata < immutable || publicVerification < metadata) {
+            errors.add(
+                    "zap publish workflow must publish immutable GitHub assets, move metadata, then verify the public result");
+        }
+    }
+
+    private static void validatePublicationBackends(Path root, List<String> errors) {
+        Path githubPublisher = root.resolve("scripts/publish-github-release");
+        Path metadataPublisher = root.resolve("scripts/publish-channel-metadata");
+        if (Files.isRegularFile(githubPublisher)) {
+            String publisher = RepositoryFiles.read(githubPublisher);
+            if (!publisher.contains("release create")
+                    || !publisher.contains("release upload")
+                    || !publisher.contains(".immutable")) {
+                errors.add("release assets must be published as verified immutable GitHub Releases");
+            }
+            if (publisher.contains("s3api")) {
+                errors.add("GitHub Release publisher must not upload release assets to object storage");
+            }
+        }
+        if (Files.isRegularFile(metadataPublisher)
+                && RepositoryFiles.read(metadataPublisher).contains("artifacts/")) {
+            errors.add("channel metadata publisher must not upload release artifacts");
         }
     }
 }

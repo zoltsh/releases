@@ -17,11 +17,15 @@
       "const": 1
     },
     "channel": {
-      "const": "zap"
+      "enum": [
+        "stable",
+        "preview",
+        "zap"
+      ]
     },
     "version": {
       "type": "string",
-      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)-zap\\.[0-9]{8}\\.[0-9a-f]{12}$"
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-zap\\.[0-9]{8}\\.[0-9a-f]{12}|-(?:alpha|beta|rc)\\.(?:0|[1-9][0-9]*))?$"
     },
     "commit": {
       "type": "string",
@@ -69,12 +73,12 @@
         "archiveUrl": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://dist\\.zolt\\.sh/artifacts/zap/"
+          "pattern": "^https://(?:github\\.com/zoltsh/releases/releases/download/zolt-(?:zap-|preview-v|v)[^/]+/|dist\\.zolt\\.sh/artifacts/zap/)"
         },
         "checksumUrl": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://dist\\.zolt\\.sh/artifacts/zap/.+\\.sha256$"
+          "pattern": "^https://(?:github\\.com/zoltsh/releases/releases/download/zolt-(?:zap-|preview-v|v)[^/]+/|dist\\.zolt\\.sh/artifacts/zap/).+\\.sha256$"
         },
         "sha256": {
           "type": "string",

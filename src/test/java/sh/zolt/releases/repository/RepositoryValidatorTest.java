@@ -83,4 +83,16 @@ final class RepositoryValidatorTest {
         assertTrue(errors.contains(
                 "zap publish workflow is missing required contract: environment: channel-zap"));
     }
+
+    @Test
+    void metadataPublisherMustNeverUploadReleaseArtifacts(@TempDir Path root) throws IOException {
+        Path publisher = root.resolve("scripts/publish-channel-metadata");
+        Files.createDirectories(publisher.getParent());
+        Files.writeString(publisher, "aws s3 cp artifacts/zap s3://zolt-dist/artifacts/zap\n");
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains("channel metadata publisher must not upload release artifacts"));
+    }
 }

@@ -1,0 +1,342 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+channel=""
+publication=""
+repository="zoltsh/releases"
+target_sha=""
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --channel)
+            channel="${2:?missing value for --channel}"
+            shift 2
+            ;;
+        --publication)
+            publication="${2:?missing value for --publication}"
+            shift 2
+            ;;
+        --repository)
+            repository="${2:?missing value for --repository}"
+            shift 2
+            ;;
+        --target-sha)
+            target_sha="${2:?missing value for --target-sha}"
+            shift 2
+            ;;
+        *)
+            printf 'error: unknown argument %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ -z "$channel" || -z "$publication" || -z "$target_sha" ]]; then
+    printf 'usage: scripts/publish-github-release --channel <zap|preview|stable> --publication <directory> --target-sha <sha> [--repository <owner/repo>]\n' >&2
+    exit 2
+fi
+if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    printf 'error: invalid GitHub release repository: %s\n' "$repository" >&2
+    exit 2
+fi
+if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    printf 'error: target SHA must be an exact 40-character lowercase commit\n' >&2
+    exit 2
+fi
+if [[ ! -d "$publication" ]]; then
+    printf 'error: publication directory does not exist: %s\n' "$publication" >&2
+    exit 2
+fi
+publication="$(cd "$publication" && pwd)"
+
+gh_cli="${ZOLT_PUBLISH_GH:-gh}"
+for command in "$gh_cli" jq sha256sum; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        printf 'error: GitHub release publication requires %s on PATH\n' "$command" >&2
+        exit 2
+    fi
+done
+
+case "$channel" in
+    zap)
+        version_pattern='^[0-9]+\.[0-9]+\.[0-9]+-zap\.[0-9]{8}\.[0-9a-f]{12}$'
+        tag_prefix="zolt-zap-"
+        expected_key_id="zolt-release-2026"
+        prerelease="true"
+        latest="false"
+        ;;
+    preview)
+        version_pattern='^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$'
+        tag_prefix="zolt-preview-v"
+        expected_key_id="zolt-preview-2026"
+        prerelease="true"
+        latest="false"
+        ;;
+    stable)
+        version_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+        tag_prefix="zolt-v"
+        expected_key_id="zolt-stable-2026"
+        prerelease="false"
+        latest="true"
+        ;;
+    *)
+        printf 'error: unsupported release channel: %s\n' "$channel" >&2
+        exit 2
+        ;;
+esac
+
+shopt -s nullglob
+version_directories=("$publication/artifacts/$channel"/*)
+shopt -u nullglob
+if [[ "${#version_directories[@]}" -ne 1 || ! -d "${version_directories[0]}" ]]; then
+    printf 'error: publication must contain exactly one artifacts/%s version directory\n' "$channel" >&2
+    exit 2
+fi
+version_directory="${version_directories[0]}"
+version="$(basename "$version_directory")"
+if [[ ! "$version" =~ $version_pattern ]]; then
+    printf 'error: invalid %s version: %s\n' "$channel" "$version" >&2
+    exit 2
+fi
+tag="${tag_prefix}${version}"
+asset_origin="https://github.com/${repository}/releases/download/${tag}"
+
+channel_json="$publication/channels/$channel.json"
+channel_signature="$publication/channels/$channel.json.sig"
+index_json="$publication/releases/$channel.json"
+index_signature="$publication/releases/$channel.json.sig"
+required_files=(
+    "$version_directory/release-manifest.json"
+    "$version_directory/release-record.json"
+    "$version_directory/source-run.json"
+    "$channel_json"
+    "$channel_signature"
+    "$index_json"
+    "$index_signature"
+)
+for target in linux-arm64 linux-x64 macos-arm64 macos-x64; do
+    archive="$version_directory/zolt-${version}-${target}.tar.gz"
+    required_files+=("$archive" "$archive.sha256")
+done
+for file in "${required_files[@]}"; do
+    if [[ ! -f "$file" ]]; then
+        printf 'error: staged publication file is missing: %s\n' "$file" >&2
+        exit 1
+    fi
+done
+if find "$publication" -type l -print -quit | grep -q .; then
+    printf 'error: staged publication must not contain symbolic links\n' >&2
+    exit 1
+fi
+if find "$version_directory" -mindepth 2 -type f -print -quit | grep -q .; then
+    printf 'error: GitHub Release assets must be flat files in %s\n' "$version_directory" >&2
+    exit 1
+fi
+while IFS= read -r file; do
+    if [[ "$(dirname "$file")" == "$version_directory" \
+        || "$file" == "$channel_json" \
+        || "$file" == "$channel_signature" \
+        || "$file" == "$index_json" \
+        || "$file" == "$index_signature" ]]; then
+        continue
+    fi
+    printf 'error: unexpected file outside the release asset set: %s\n' "$file" >&2
+    exit 1
+done < <(find "$publication" -type f | sort)
+
+if [[ "$(jq -er '.channel' "$channel_json")" != "$channel" \
+    || "$(jq -er '.version' "$channel_json")" != "$version" \
+    || "$(jq -er '.channel' "$index_json")" != "$channel" \
+    || "$(jq -er '.versions[0].version' "$index_json")" != "$version" \
+    || "$(jq -er '.channel' "$version_directory/release-record.json")" != "$channel" \
+    || "$(jq -er '.version' "$version_directory/release-record.json")" != "$version" ]]; then
+    printf 'error: staged metadata does not match channel %s version %s\n' "$channel" "$version" >&2
+    exit 1
+fi
+if [[ "$(jq -er '.artifacts | length' "$channel_json")" -ne 4 ]]; then
+    printf 'error: staged channel must contain four target artifacts\n' >&2
+    exit 1
+fi
+if ! jq -e --arg origin "$asset_origin/" '
+    all(.artifacts[];
+        (.archiveUrl == ($origin + .archive)) and
+        (.checksumUrl == ($origin + .archive + ".sha256")))
+' "$channel_json" >/dev/null; then
+    printf 'error: staged channel does not point exactly at GitHub Release %s\n' "$tag" >&2
+    exit 1
+fi
+for sidecar in "$channel_signature" "$index_signature"; do
+    if [[ "$(awk -F ': ' '$1 == "version" { print $2 }' "$sidecar")" != "zolt-ed25519-v1" \
+        || "$(awk -F ': ' '$1 == "keyId" { print $2 }' "$sidecar")" != "$expected_key_id" \
+        || -z "$(awk -F ': ' '$1 == "signature" { print $2 }' "$sidecar")" ]]; then
+        printf 'error: staged signature has the wrong format or key: %s\n' "$sidecar" >&2
+        exit 1
+    fi
+done
+for target in linux-arm64 linux-x64 macos-arm64 macos-x64; do
+    archive="zolt-${version}-${target}.tar.gz"
+    expected_digest="$(awk '{ print $1; exit }' "$version_directory/$archive.sha256")"
+    actual_digest="$(sha256sum "$version_directory/$archive" | awk '{ print $1 }')"
+    if [[ ! "$expected_digest" =~ ^[0-9a-f]{64}$ || "$expected_digest" != "$actual_digest" ]]; then
+        printf 'error: staged archive checksum mismatch: %s\n' "$archive" >&2
+        exit 1
+    fi
+done
+
+temporary="$(mktemp -d)"
+trap 'rm -rf "$temporary"' EXIT
+cp "$channel_json" "$temporary/channel-$channel.json"
+cp "$channel_signature" "$temporary/channel-$channel.json.sig"
+cp "$index_json" "$temporary/release-index-$channel.json"
+cp "$index_signature" "$temporary/release-index-$channel.json.sig"
+
+assets=()
+while IFS= read -r file; do
+    assets+=("$file")
+done < <(find "$version_directory" -maxdepth 1 -type f | sort)
+assets+=(
+    "$temporary/channel-$channel.json"
+    "$temporary/channel-$channel.json.sig"
+    "$temporary/release-index-$channel.json"
+    "$temporary/release-index-$channel.json.sig"
+)
+asset_names="$temporary/asset-names"
+: >"$asset_names"
+for file in "${assets[@]}"; do
+    name="$(basename "$file")"
+    if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+        printf 'error: unsafe GitHub Release asset name: %s\n' "$name" >&2
+        exit 1
+    fi
+    if grep -Fxq -- "$name" "$asset_names"; then
+        printf 'error: duplicate GitHub Release asset name: %s\n' "$name" >&2
+        exit 1
+    fi
+    printf '%s\n' "$name" >>"$asset_names"
+done
+
+release_json="$temporary/release.json"
+release_error="$temporary/release.error"
+release_exists() {
+    if "$gh_cli" api "repos/$repository/releases/tags/$tag" >"$release_json" 2>"$release_error"; then
+        return 0
+    fi
+    if grep -Eqi 'HTTP 404|Not Found|release not found' "$release_error"; then
+        return 1
+    fi
+    printf 'error: could not inspect GitHub Release %s\n' "$tag" >&2
+    cat "$release_error" >&2
+    exit 1
+}
+
+if ! release_exists; then
+    notes="$temporary/notes.md"
+    {
+        printf 'Immutable Zolt %s release \x60%s\x60.\n\n' "$channel" "$version"
+        printf 'Source and controller identities are recorded in release-record.json.\n'
+    } >"$notes"
+    create_args=(
+        release create "$tag"
+        --repo "$repository"
+        --target "$target_sha"
+        --title "Zolt $channel $version"
+        --notes-file "$notes"
+        --draft
+        --latest=false
+    )
+    if [[ "$prerelease" == "true" ]]; then
+        create_args+=(--prerelease)
+    fi
+    "$gh_cli" "${create_args[@]}"
+    if ! release_exists; then
+        printf 'error: GitHub Release was not readable after creation: %s\n' "$tag" >&2
+        exit 1
+    fi
+fi
+
+validate_release_identity() {
+    local draft
+    draft="$(jq -er '.draft' "$release_json")"
+    if [[ "$(jq -er '.tag_name' "$release_json")" != "$tag" \
+        || "$(jq -er '.prerelease' "$release_json")" != "$prerelease" ]]; then
+        printf 'error: existing GitHub Release has divergent identity: %s\n' "$tag" >&2
+        exit 1
+    fi
+    if ! "$gh_cli" api "repos/$repository/git/ref/tags/$tag" >"$temporary/tag-ref.json"; then
+        printf 'error: could not verify Git tag for release %s\n' "$tag" >&2
+        exit 1
+    fi
+    if [[ "$(jq -er '.object.type' "$temporary/tag-ref.json")" != "commit" \
+        || "$(jq -er '.object.sha' "$temporary/tag-ref.json")" != "$target_sha" ]]; then
+        printf 'error: GitHub Release tag %s does not point to controller commit %s\n' "$tag" "$target_sha" >&2
+        exit 1
+    fi
+    printf '%s\n' "$draft"
+}
+
+draft="$(validate_release_identity)"
+while IFS= read -r remote_name; do
+    if ! grep -Fxq -- "$remote_name" "$asset_names"; then
+        printf 'error: GitHub Release contains unexpected asset: %s\n' "$remote_name" >&2
+        exit 1
+    fi
+done < <(jq -r '.assets[].name' "$release_json")
+
+verify_remote_asset() {
+    local file="$1"
+    local name expected_digest expected_size count remote_digest remote_size remote_url
+    name="$(basename "$file")"
+    expected_digest="sha256:$(sha256sum "$file" | awk '{ print $1 }')"
+    expected_size="$(wc -c <"$file" | tr -d ' ')"
+    count="$(jq --arg name "$name" '[.assets[] | select(.name == $name)] | length' "$release_json")"
+    if [[ "$count" -ne 1 ]]; then
+        return 1
+    fi
+    remote_digest="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .digest' "$release_json")"
+    remote_size="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .size' "$release_json")"
+    remote_url="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .browser_download_url' "$release_json")"
+    if [[ "$remote_digest" != "$expected_digest" || "$remote_size" != "$expected_size" \
+        || "$remote_url" != "$asset_origin/$name" ]]; then
+        printf 'error: GitHub Release asset differs from staged bytes: %s\n' "$name" >&2
+        exit 1
+    fi
+}
+
+for file in "${assets[@]}"; do
+    if verify_remote_asset "$file"; then
+        continue
+    fi
+    if [[ "$draft" != "true" ]]; then
+        printf 'error: published GitHub Release is missing asset: %s\n' "$(basename "$file")" >&2
+        exit 1
+    fi
+    "$gh_cli" release upload "$tag" "$file" --repo "$repository"
+    release_exists
+    verify_remote_asset "$file"
+done
+
+if [[ "$(jq '.assets | length' "$release_json")" -ne "${#assets[@]}" ]]; then
+    printf 'error: GitHub Release asset set is incomplete or unexpected\n' >&2
+    exit 1
+fi
+
+if [[ "$draft" == "true" ]]; then
+    "$gh_cli" release edit "$tag" \
+        --repo "$repository" \
+        --draft=false \
+        --prerelease="$prerelease" \
+        --latest="$latest"
+    release_exists
+    draft="$(validate_release_identity)"
+fi
+if [[ "$draft" != "false" || "$(jq -er '.immutable' "$release_json")" != "true" ]]; then
+    printf 'error: GitHub Release is not published and immutable: %s\n' "$tag" >&2
+    exit 1
+fi
+for file in "${assets[@]}"; do
+    verify_remote_asset "$file"
+done
+
+printf 'Published immutable GitHub Release %s for %s %s\n' "$tag" "$channel" "$version"

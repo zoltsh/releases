@@ -8,8 +8,9 @@ public final class ReleaseConstants {
     public static final String DEFAULT_POLICY_FILE = "policy/channels.toml";
     public static final String DEFAULT_SOURCE_TOKEN_ENV = "ZOLT_SOURCE_READ_TOKEN";
     public static final String ZAP_CHANNEL = "zap";
-    public static final String ZAP_DISTRIBUTION_ORIGIN = "https://dist.zolt.sh";
-    public static final String ZAP_DISTRIBUTION_BUCKET = "zolt-dist";
+    public static final String RELEASE_ASSET_REPOSITORY = "zoltsh/releases";
+    public static final String RELEASE_ASSET_ORIGIN =
+            "https://github.com/" + RELEASE_ASSET_REPOSITORY + "/releases/download";
     public static final String ZAP_SIGNING_KEY_ID = "zolt-release-2026";
     public static final String ZAP_SIGNING_PUBLIC_KEY =
             "MCowBQYDK2VwAyEAn6cIrOCATTABSbWHl34vlZlP6xu/sFN8rxKga+/M/ZU=";

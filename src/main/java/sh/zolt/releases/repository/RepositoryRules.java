@@ -12,8 +12,9 @@ final class RepositoryRules {
     static final Pattern TOP_LEVEL_PERMISSIONS =
             Pattern.compile("^permissions:\\s*(?:\\{\\}|$)", Pattern.MULTILINE);
     static final Pattern PINNED_ZOLT_ARCHIVE = Pattern.compile(
-            "ZOLT_ARCHIVE_URL:\\s*https://dist\\.zolt\\.sh/artifacts/zap/"
-                    + "[^/\\s]+/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
+            "ZOLT_ARCHIVE_URL:\\s*https://(?:dist\\.zolt\\.sh/artifacts/zap/[^/\\s]+"
+                    + "|github\\.com/zoltsh/releases/releases/download/zolt-zap-[^/\\s]+)"
+                    + "/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
     static final Pattern PINNED_ZOLT_CHECKSUM =
             Pattern.compile("ZOLT_ARCHIVE_SHA256:\\s*[0-9a-f]{64}");
     static final Pattern OTHER_TOOLCHAIN = Pattern.compile(
@@ -53,8 +54,9 @@ final class RepositoryRules {
             "schemas/release-index-v1.schema.json",
             "scripts/bootstrap.sh",
             "scripts/check",
-            "scripts/publish-zap",
-            "scripts/publish-zap-test",
+            "scripts/publish-channel-metadata",
+            "scripts/publish-github-release",
+            "scripts/publish-release-test",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml",
             "src/main/java/sh/zolt/releases/cli/ReleaseController.java",
@@ -111,12 +113,16 @@ final class RepositoryRules {
             "verify-release-file",
             "sign-release-file",
             "ZOLT_RELEASE_ED25519_PRIVATE_KEY: ${{ secrets.ZOLT_RELEASE_ED25519_PRIVATE_KEY }}",
+            "GH_TOKEN: ${{ github.token }}",
+            "scripts/publish-github-release",
+            "--target-sha \"$CANDIDATE_CONTROLLER_SHA\"",
             "AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}",
             "AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}",
-            "scripts/publish-zap",
+            "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json");
     static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
             "scripts/zap-distribution",
+            "scripts/publish-zap",
             "working-directory: source",
             "actions/checkout@main",
             "actions/download-artifact@main");

@@ -8,7 +8,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 concurrency:
   group: zap-publication
@@ -186,17 +186,30 @@ jobs:
               --input out/publication/channels/zap.json \
               --signature out/publication/channels/zap.json.sig
 
-      - name: Publish immutable files and move zap last
+      - name: Publish immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_CONTROLLER_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          scripts/publish-github-release \
+              --channel zap \
+              --publication out/publication \
+              --target-sha "$CANDIDATE_CONTROLLER_SHA"
+
+      - name: Move signed zap channel metadata last
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: nyc3
         run: |
-          scripts/publish-zap \
+          scripts/publish-channel-metadata \
+              --channel zap \
               --publication out/publication \
               --expected-current-channel current/channels/zap.json
 
       - name: Verify public zap publication
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
@@ -218,6 +231,16 @@ jobs:
                   && zolt run --quiet -- verify-release-file \
                       --input out/public-index.json \
                       --signature out/public-index.json.sig; then
+                  version="$(jq -er '.version' out/public-channel.json)"
+                  tag="zolt-zap-${version}"
+                  gh release view "$tag" \
+                      --repo zoltsh/releases \
+                      --json isDraft,isImmutable,isPrerelease,tagName \
+                      --jq ".tagName == \"$tag\" and .isDraft == false and .isImmutable == true and .isPrerelease == true" \
+                      | grep -Fx true >/dev/null
+                  while IFS= read -r asset_url; do
+                      curl --proto '=https' --tlsv1.2 -fsSIL "$asset_url" >/dev/null
+                  done < <(jq -r '.artifacts[] | .archiveUrl, .checksumUrl' out/public-channel.json)
                   cat out/public-channel.json >> "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi

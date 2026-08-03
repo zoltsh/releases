@@ -79,9 +79,9 @@ final class ReleaseMetadataWriter {
                 .toList()) {
             ObjectNode entry = artifacts.addObject();
             String archive = artifact.archive().getFileName().toString();
-            String archiveUrl = ReleaseConstants.ZAP_DISTRIBUTION_ORIGIN
-                    + "/artifacts/zap/"
-                    + release.version()
+            String archiveUrl = ReleaseConstants.RELEASE_ASSET_ORIGIN
+                    + "/"
+                    + releaseTag(release.version())
                     + "/"
                     + archive;
             entry.put("target", artifact.target());
@@ -182,16 +182,24 @@ final class ReleaseMetadataWriter {
         validateVersion(channel, "zap channel");
         for (JsonNode artifact : channel.path("artifacts")) {
             String version = channel.path("version").asText();
-            String expectedPrefix = ReleaseConstants.ZAP_DISTRIBUTION_ORIGIN
-                    + "/artifacts/zap/"
-                    + version
+            String githubPrefix = ReleaseConstants.RELEASE_ASSET_ORIGIN
+                    + "/"
+                    + releaseTag(version)
                     + "/";
-            if (!artifact.path("archiveUrl").asText().startsWith(expectedPrefix)
-                    || !artifact.path("checksumUrl").asText().startsWith(expectedPrefix)) {
+            String legacyPrefix = "https://dist.zolt.sh/artifacts/zap/" + version + "/";
+            String archiveUrl = artifact.path("archiveUrl").asText();
+            String checksumUrl = artifact.path("checksumUrl").asText();
+            if (!(archiveUrl.startsWith(githubPrefix) && checksumUrl.startsWith(githubPrefix))
+                    && !(archiveUrl.startsWith(legacyPrefix)
+                            && checksumUrl.startsWith(legacyPrefix))) {
                 throw new IllegalArgumentException(
-                        "current zap channel contains an artifact outside dist.zolt.sh");
+                        "current zap channel contains an artifact outside its release location");
             }
         }
+    }
+
+    private static String releaseTag(String version) {
+        return "zolt-zap-" + version;
     }
 
     private static void validateVersion(JsonNode version, String description) {
