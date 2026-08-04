@@ -13,6 +13,7 @@ fail() {
 
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required: https://cli.github.com/"
+command -v jq >/dev/null 2>&1 || fail "jq is required: https://jqlang.github.io/jq/"
 
 gh auth status >/dev/null 2>&1 || fail "authenticate GitHub CLI with: gh auth login"
 
@@ -65,6 +66,76 @@ gh api --method PUT "repos/${FULL_REPO}/actions/permissions/workflow" \
     -f default_workflow_permissions=read \
     -F can_approve_pull_request_reviews=false >/dev/null
 
+gh api --method PUT "repos/${FULL_REPO}/actions/permissions" \
+    -F enabled=true \
+    -f allowed_actions=selected \
+    -F sha_pinning_required=true >/dev/null
+
+gh api --method PUT "repos/${FULL_REPO}/actions/permissions/selected-actions" \
+    -F github_owned_allowed=true \
+    -F verified_allowed=false \
+    -f 'patterns_allowed[]=graalvm/setup-graalvm@*' \
+    -f 'patterns_allowed[]=zoltsh/setup-zolt@*' >/dev/null
+
+ruleset_payload="$(mktemp "${TMPDIR:-/tmp}/zolt-releases-main-ruleset.XXXXXX")"
+trap 'rm -f "$ruleset_payload"' EXIT
+jq -n '
+    {
+        name: "main",
+        target: "branch",
+        enforcement: "active",
+        bypass_actors: [],
+        conditions: {
+            ref_name: {
+                include: ["refs/heads/main"],
+                exclude: []
+            }
+        },
+        rules: [
+            {type: "deletion"},
+            {type: "non_fast_forward"},
+            {
+                type: "pull_request",
+                parameters: {
+                    allowed_merge_methods: ["squash"],
+                    dismiss_stale_reviews_on_push: true,
+                    require_code_owner_review: true,
+                    require_last_push_approval: true,
+                    required_approving_review_count: 2,
+                    required_review_thread_resolution: true
+                }
+            },
+            {
+                type: "required_status_checks",
+                parameters: {
+                    do_not_enforce_on_create: true,
+                    required_status_checks: [
+                        {context: "repository", integration_id: 15368}
+                    ],
+                    strict_required_status_checks_policy: true
+                }
+            }
+        ]
+    }
+' >"$ruleset_payload"
+
+rulesets="$(gh api "repos/${FULL_REPO}/rulesets?includes_parents=false")"
+ruleset_count="$(jq '[.[] | select(.name == "main")] | length' <<<"$rulesets")"
+case "$ruleset_count" in
+    0)
+        gh api --method POST "repos/${FULL_REPO}/rulesets" \
+            --input "$ruleset_payload" >/dev/null
+        ;;
+    1)
+        ruleset_id="$(jq -r '.[] | select(.name == "main") | .id' <<<"$rulesets")"
+        gh api --method PUT "repos/${FULL_REPO}/rulesets/${ruleset_id}" \
+            --input "$ruleset_payload" >/dev/null
+        ;;
+    *)
+        fail "multiple repository rulesets are named main"
+        ;;
+esac
+
 for environment in channel-zap channel-preview channel-stable; do
     gh api --method PUT "repos/${FULL_REPO}/environments/${environment}" >/dev/null
 done
@@ -90,12 +161,11 @@ Created and pushed ${FULL_REPO}.
 Still required in GitHub:
   1. Create teams: release-engineers and release-approvers.
   2. Give normal maintainers read-only access to this repository.
-  3. Add the main ruleset from docs/SETUP.md (2 approvals, CODEOWNER, no normal bypass).
-  4. Make release-engineers owners of sensitive paths through CODEOWNERS.
-  5. Add one trusted reviewer to channel-stable and prevent self-review.
-  6. Keep channel-zap and channel-preview at zero reviewers initially.
-  7. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
-  8. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
+  3. Make release-engineers owners of sensitive paths through CODEOWNERS.
+  4. Add one trusted reviewer to channel-stable and prevent self-review.
+  5. Keep channel-zap and channel-preview at zero reviewers initially.
+  6. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
+  7. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
 
 No publication secret is required for candidate builds.
 EOF

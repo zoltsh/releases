@@ -12,6 +12,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validateActionPins(root, errors);
         validateZoltSetup(root, errors);
         validateWorkflowPermissions(root, errors);
+        validateBootstrapSecurity(root, errors);
         validateTrustedControllerResolution(root, errors);
         validateCandidateToolchainSync(root, errors);
         validateCandidateWorkflow(root, errors);
@@ -62,6 +63,19 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add(
                         "workflow must declare top-level permissions: "
                                 + ProjectFiles.relative(root, path));
+            }
+        }
+    }
+
+    private static void validateBootstrapSecurity(Path root, List<String> errors) {
+        Path path = root.resolve("scripts/bootstrap.sh");
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String bootstrap = RepositoryFiles.read(path);
+        for (String fragment : RepositoryRules.BOOTSTRAP_SECURITY_FRAGMENTS) {
+            if (!bootstrap.contains(fragment)) {
+                errors.add("bootstrap is missing required repository control: " + fragment);
             }
         }
     }

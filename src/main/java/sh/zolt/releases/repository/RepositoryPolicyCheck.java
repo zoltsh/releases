@@ -140,10 +140,105 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 "release immutability must be enabled before publication",
                 errors);
         TomlTable mainRules = table(settings, "main_rules", errors);
+        requireBoolean(
+                mainRules,
+                "pull_request_required",
+                true,
+                "main changes must use pull requests",
+                errors);
         Long approvals = mainRules.getLong("required_approvals");
         if (approvals == null || approvals < 2) {
             errors.add("release-controller changes must require at least two approvals");
         }
+        requireBoolean(
+                mainRules,
+                "code_owner_review_required",
+                true,
+                "main changes must require CODEOWNER review",
+                errors);
+        requireBoolean(
+                mainRules,
+                "latest_push_approval_required",
+                true,
+                "main changes must require approval of the latest push",
+                errors);
+        requireBoolean(
+                mainRules,
+                "dismiss_stale_reviews_on_push",
+                true,
+                "new pushes must dismiss stale reviews",
+                errors);
+        requireBoolean(
+                mainRules,
+                "conversations_resolved",
+                true,
+                "main changes must resolve review conversations",
+                errors);
+        requireString(
+                mainRules,
+                "required_status_check",
+                "repository",
+                "main must require the repository validation check",
+                errors);
+        requireLong(
+                mainRules,
+                "required_status_check_app_id",
+                15368L,
+                "the repository check must come from GitHub Actions",
+                errors);
+        requireBoolean(
+                mainRules,
+                "strict_status_checks",
+                true,
+                "main must require checks against the latest base",
+                errors);
+        requireBoolean(
+                mainRules,
+                "force_push_allowed",
+                false,
+                "main must reject force pushes",
+                errors);
+        requireBoolean(
+                mainRules,
+                "deletion_allowed",
+                false,
+                "main must reject deletion",
+                errors);
+        requireBoolean(
+                mainRules,
+                "normal_bypass_allowed",
+                false,
+                "main must not allow a normal bypass",
+                errors);
+        TomlTable actions = table(settings, "actions", errors);
+        requireBoolean(
+                actions,
+                "full_sha_pinning_required",
+                true,
+                "external actions must be pinned to full commit SHAs",
+                errors);
+        requireBoolean(
+                actions,
+                "github_owned_allowed",
+                true,
+                "GitHub-owned actions must remain available",
+                errors);
+        requireBoolean(
+                actions,
+                "verified_creators_allowed",
+                false,
+                "verified creators must not be allowed without review",
+                errors);
+        if (!stringArray(actions, "allowed_patterns")
+                .equals(List.of("graalvm/setup-graalvm@*", "zoltsh/setup-zolt@*"))) {
+            errors.add("the external action allowlist must contain only reviewed dependencies");
+        }
+        requireBoolean(
+                actions,
+                "self_hosted_privileged_release_runners",
+                false,
+                "publication credentials must not run on self-hosted runners",
+                errors);
         TomlTable environments = table(settings, "environments", errors);
         requireLong(
                 table(environments, "channel_zap", errors),

@@ -35,6 +35,8 @@ The script:
 - pushes `main`
 - sets the basic repository options
 - makes the default Actions token read-only
+- restricts Actions to reviewed, full-SHA dependencies
+- protects `main` with the reviewed repository rules
 - creates `channel-zap`, `channel-preview`, and `channel-stable`
 - enables immutable GitHub Releases for every channel
 
@@ -53,14 +55,14 @@ need release or owner access.
 
 ## 3. Protect `main`
 
-Create a ruleset for `main` with:
+The bootstrap creates a `main` ruleset with:
 
 - pull requests required
 - two approvals
 - CODEOWNER review
 - approval of the latest push
 - resolved conversations
-- required `validate / repository` check
+- required `repository` check from GitHub Actions
 - no force pushes
 - no deletion
 - no normal bypass
@@ -79,14 +81,16 @@ Only the trusted publisher may create them. Do not allow updates or deletion.
 
 ## 4. Restrict GitHub Actions
 
-At the organization and repository levels:
+The bootstrap restricts this repository to:
 
 - keep the default `GITHUB_TOKEN` read-only
 - prevent Actions from approving pull requests
-- allow GitHub-owned actions, `graalvm/setup-graalvm`, `zoltsh/setup-zolt`, and
-  reviewed reusable workflows
+- allow GitHub-owned actions, `graalvm/setup-graalvm`, and `zoltsh/setup-zolt`
 - pin every external action to a full commit SHA
 - do not use self-hosted runners for jobs with publication credentials
+
+Keep the organization policy compatible or stricter. Add any future external action or
+reusable workflow to the repository allowlist only after review.
 
 The repository test suite rejects unpinned actions.
 

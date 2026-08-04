@@ -91,6 +91,22 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void bootstrapMustEnforceRepositorySecurityControls(@TempDir Path root) throws IOException {
+        Path bootstrap = root.resolve("scripts/bootstrap.sh");
+        Files.createDirectories(bootstrap.getParent());
+        Files.writeString(
+                bootstrap,
+                Files.readString(Path.of("scripts/bootstrap.sh"))
+                        .replace("sha_pinning_required=true", "sha_pinning_required=false"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "bootstrap is missing required repository control: sha_pinning_required=true"));
+    }
+
+    @Test
     void candidateBuildMustSyncSourceToolchainBeforeDistribution(@TempDir Path root)
             throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-candidate.yml");

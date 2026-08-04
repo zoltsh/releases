@@ -12,13 +12,20 @@ pull_request_required = true
 required_approvals = 2
 code_owner_review_required = true
 latest_push_approval_required = true
+dismiss_stale_reviews_on_push = true
 conversations_resolved = true
+required_status_check = "repository"
+required_status_check_app_id = 15368
+strict_status_checks = true
 force_push_allowed = false
 deletion_allowed = false
 normal_bypass_allowed = false
 
 [actions]
 full_sha_pinning_required = true
+github_owned_allowed = true
+verified_creators_allowed = false
+allowed_patterns = ["graalvm/setup-graalvm@*", "zoltsh/setup-zolt@*"]
 self_hosted_privileged_release_runners = false
 
 [environments.channel_zap]
