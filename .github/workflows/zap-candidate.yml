@@ -147,7 +147,6 @@ jobs:
         with:
           distribution: graalvm
           java-version: '21'
-          components: native-image
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch exact source commit
