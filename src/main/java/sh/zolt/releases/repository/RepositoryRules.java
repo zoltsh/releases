@@ -114,7 +114,14 @@ final class RepositoryRules {
             "require_last_push_approval: true",
             "required_review_thread_resolution: true",
             "context: \"repository\", integration_id: 15368",
-            "strict_required_status_checks_policy: true");
+            "strict_required_status_checks_policy: true",
+            "deployment_branch_policy[protected_branches]=false",
+            "deployment_branch_policy[custom_branch_policies]=true",
+            "deployment-branch-policies?per_page=100",
+            "-f type=\"$ref_type\"",
+            "configure_environment_ref channel-zap branch main",
+            "configure_environment_ref channel-preview tag 'zolt-preview-*'",
+            "configure_environment_ref channel-stable tag 'zolt-v*'");
     static final List<String> TRUSTED_CONTROLLER_WORKFLOWS = List.of(
             ".github/workflows/preview.yml",
             ".github/workflows/stable.yml",
@@ -171,7 +178,10 @@ final class RepositoryRules {
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json",
             "cmp -s scripts/install-bootstrap out/public-installer.sh",
-            "ZOLT_INSTALL_ROOT=\"$install_root\" sh out/public-installer.sh");
+            "\n  canary:\n",
+            "needs: publish",
+            "permissions:\n      contents: read",
+            "ZOLT_INSTALL_ROOT=\"$install_root\" sh public-installer.sh");
     static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
             "scripts/zap-distribution",
             "scripts/publish-zap",
@@ -191,7 +201,10 @@ final class RepositoryRules {
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json",
             "cmp -s scripts/install-bootstrap out/public-installer.sh",
-            "ZOLT_INSTALL_ROOT=\"$install_root\" sh out/public-installer.sh",
+            "\n  canary:\n",
+            "needs: recover",
+            "permissions:\n      contents: read",
+            "ZOLT_INSTALL_ROOT=\"$install_root\" sh public-installer.sh",
             "Verify public zap recovery");
     static final List<String> FORBIDDEN_DISPATCHER_FRAGMENTS = List.of(
             "permission-contents: write",

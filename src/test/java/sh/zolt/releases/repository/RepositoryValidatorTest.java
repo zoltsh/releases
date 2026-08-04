@@ -107,6 +107,25 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void bootstrapMustRestrictZapDeploymentsToMain(@TempDir Path root) throws IOException {
+        Path bootstrap = root.resolve("scripts/bootstrap.sh");
+        Files.createDirectories(bootstrap.getParent());
+        Files.writeString(
+                bootstrap,
+                Files.readString(Path.of("scripts/bootstrap.sh"))
+                        .replace(
+                                "configure_environment_ref channel-zap branch main",
+                                "configure_environment_ref channel-zap branch '*'"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "bootstrap is missing required repository control: "
+                        + "configure_environment_ref channel-zap branch main"));
+    }
+
+    @Test
     void candidateBuildMustSyncSourceToolchainBeforeDistribution(@TempDir Path root)
             throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-candidate.yml");
@@ -146,6 +165,43 @@ final class RepositoryValidatorTest {
 
         assertTrue(errors.contains(
                 "zap publish workflow is missing required contract: environment: channel-zap"));
+    }
+
+    @Test
+    void zapPublisherMustRunCandidateInUnprivilegedCanary(@TempDir Path root)
+            throws IOException {
+        Path workflow = root.resolve(".github/workflows/zap-publish.yml");
+        Files.createDirectories(workflow.getParent());
+        Files.writeString(
+                workflow,
+                Files.readString(Path.of(".github/workflows/zap-publish.yml"))
+                        .replace(
+                                "permissions:\n      contents: read",
+                                "permissions:\n      contents: write"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "zap publish canary must have read-only contents permission and no publishing environment or secrets"));
+    }
+
+    @Test
+    void policyMustRestrictZapDeploymentsToMain(@TempDir Path root) throws IOException {
+        Path policy = root.resolve("policy/repository-settings.toml");
+        Files.createDirectories(policy.getParent());
+        Files.copy(Path.of("policy/channels.toml"), root.resolve("policy/channels.toml"));
+        Files.writeString(
+                policy,
+                Files.readString(Path.of("policy/repository-settings.toml"))
+                        .replace(
+                                "deployment_ref_pattern = \"main\"",
+                                "deployment_ref_pattern = \"*\""));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryPolicyCheck().validate(root, errors);
+
+        assertTrue(errors.contains("channel-zap deployments must be restricted to main"));
     }
 
     @Test

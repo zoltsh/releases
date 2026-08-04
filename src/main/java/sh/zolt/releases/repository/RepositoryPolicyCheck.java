@@ -240,11 +240,50 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 "publication credentials must not run on self-hosted runners",
                 errors);
         TomlTable environments = table(settings, "environments", errors);
+        TomlTable zapEnvironment = table(environments, "channel_zap", errors);
+        TomlTable previewEnvironment = table(environments, "channel_preview", errors);
+        TomlTable stableEnvironment = table(environments, "channel_stable", errors);
         requireLong(
-                table(environments, "channel_zap", errors),
+                zapEnvironment,
                 "reviewers",
                 0L,
                 "channel-zap must not require a reviewer",
+                errors);
+        requireString(
+                zapEnvironment,
+                "deployment_ref_type",
+                "branch",
+                "channel-zap deployments must use a branch policy",
+                errors);
+        requireString(
+                zapEnvironment,
+                "deployment_ref_pattern",
+                "main",
+                "channel-zap deployments must be restricted to main",
+                errors);
+        requireString(
+                previewEnvironment,
+                "deployment_ref_type",
+                "tag",
+                "channel-preview deployments must use a tag policy",
+                errors);
+        requireString(
+                previewEnvironment,
+                "deployment_ref_pattern",
+                "zolt-preview-*",
+                "channel-preview deployments must use protected preview tags",
+                errors);
+        requireString(
+                stableEnvironment,
+                "deployment_ref_type",
+                "tag",
+                "channel-stable deployments must use a tag policy",
+                errors);
+        requireString(
+                stableEnvironment,
+                "deployment_ref_pattern",
+                "zolt-v*",
+                "channel-stable deployments must use protected stable tags",
                 errors);
 
         TomlTable tagRules = table(settings, "tag_rules", errors);

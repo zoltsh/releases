@@ -26,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: channel-zap
+    outputs:
+      version: ${{ steps.public-verification.outputs.version }}
 
     steps:
       - name: Check out exact trusted controller
@@ -227,6 +229,7 @@ jobs:
               --expected-current-channel current/channels/zap.json
 
       - name: Verify public zap publication
+        id: public-verification
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -255,11 +258,6 @@ jobs:
                       --input out/public-index.json \
                       --signature out/public-index.json.sig; then
                   version="$(jq -er '.version' out/public-channel.json)"
-                  install_root="$RUNNER_TEMP/public-bootstrap"
-                  ZOLT_INSTALL_ROOT="$install_root" sh out/public-installer.sh
-                  test "$("$install_root/bin/zolt" --version)" = "$version"
-                  test "$(cat "$install_root/channel-url")" = \
-                      'https://dist.zolt.sh/channels/zap.json'
                   tag="zolt-zap-${version}"
                   gh release view "$tag" \
                       --repo zoltsh/releases \
@@ -269,6 +267,7 @@ jobs:
                   while IFS= read -r asset_url; do
                       curl --proto '=https' --tlsv1.2 -fsSIL "$asset_url" >/dev/null
                   done < <(jq -r '.artifacts[] | .archiveUrl, .checksumUrl' out/public-channel.json)
+                  printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
                   cat out/public-channel.json >> "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
@@ -277,3 +276,33 @@ jobs:
           done
           printf 'error: public zap metadata did not converge to the staged signed files\n' >&2
           exit 1
+
+  canary:
+    needs: publish
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Verify public install without publication authority
+        env:
+          EXPECTED_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-zap\.[0-9]{8}\.[0-9a-f]{12}$ ]]
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              -fsSLo public-installer.sh https://dist.zolt.sh/install.sh
+          cmp -s scripts/install-bootstrap public-installer.sh
+          sh -n public-installer.sh
+          install_root="$RUNNER_TEMP/public-bootstrap"
+          ZOLT_INSTALL_ROOT="$install_root" sh public-installer.sh
+          test "$("$install_root/bin/zolt" --version)" = "$EXPECTED_VERSION"
+          test "$(cat "$install_root/channel-url")" = \
+              'https://dist.zolt.sh/channels/zap.json'

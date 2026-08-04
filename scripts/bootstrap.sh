@@ -11,6 +11,53 @@ fail() {
     exit 1
 }
 
+configure_environment_ref() {
+    local environment="$1"
+    local ref_type="$2"
+    local ref_pattern="$3"
+    local endpoint="repos/${FULL_REPO}/environments/${environment}"
+    local environment_state policies
+
+    environment_state="$(gh api "$endpoint" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10" 2>/dev/null || true)"
+    if ! jq -e '
+        .deployment_branch_policy.protected_branches == false and
+        .deployment_branch_policy.custom_branch_policies == true
+    ' <<<"$environment_state" >/dev/null 2>&1; then
+        gh api --method PUT "$endpoint" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            -F 'deployment_branch_policy[protected_branches]=false' \
+            -F 'deployment_branch_policy[custom_branch_policies]=true' >/dev/null
+    fi
+
+    policies="$(gh api "${endpoint}/deployment-branch-policies?per_page=100" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10")"
+
+    while IFS= read -r policy_id; do
+        gh api --method DELETE "${endpoint}/deployment-branch-policies/${policy_id}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" >/dev/null
+    done < <(jq -r '.branch_policies[].id' <<<"$policies")
+
+    gh api --method POST "${endpoint}/deployment-branch-policies" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10" \
+        -f name="$ref_pattern" \
+        -f type="$ref_type" >/dev/null
+
+    policies="$(gh api "${endpoint}/deployment-branch-policies?per_page=100" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10")"
+    jq -e \
+        --arg name "$ref_pattern" \
+        '.total_count == 1 and .branch_policies[0].name == $name' \
+        <<<"$policies" >/dev/null \
+        || fail "${environment} must allow only ${ref_type} ${ref_pattern}"
+}
+
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required: https://cli.github.com/"
 command -v jq >/dev/null 2>&1 || fail "jq is required: https://jqlang.github.io/jq/"
@@ -136,9 +183,9 @@ case "$ruleset_count" in
         ;;
 esac
 
-for environment in channel-zap channel-preview channel-stable; do
-    gh api --method PUT "repos/${FULL_REPO}/environments/${environment}" >/dev/null
-done
+configure_environment_ref channel-zap branch main
+configure_environment_ref channel-preview tag 'zolt-preview-*'
+configure_environment_ref channel-stable tag 'zolt-v*'
 
 immutable_enabled="$(gh api "repos/${FULL_REPO}/immutable-releases" \
     -H "Accept: application/vnd.github+json" \
@@ -164,8 +211,9 @@ Still required in GitHub:
   3. Make release-engineers owners of sensitive paths through CODEOWNERS.
   4. Add one trusted reviewer to channel-stable and prevent self-review.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
-  6. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
-  7. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
+  6. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
+  7. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
+  8. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
 
 No publication secret is required for candidate builds.
 EOF

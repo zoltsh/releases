@@ -187,6 +187,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap publish workflow contains forbidden candidate authority: " + fragment);
             }
         }
+        validateUnprivilegedCanary(workflow, "zap publish", errors);
         int immutable = workflow.indexOf("scripts/publish-github-release");
         int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
@@ -211,6 +212,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap recovery workflow is missing required contract: " + fragment);
             }
         }
+        validateUnprivilegedCanary(workflow, "zap recovery", errors);
         int immutable = workflow.indexOf(".immutable == true");
         int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
@@ -221,6 +223,25 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 || publicVerification < metadata) {
             errors.add(
                     "zap recovery workflow must verify an immutable release, publish the stable installer bootstrap, move metadata, then verify the public result");
+        }
+    }
+
+    private static void validateUnprivilegedCanary(
+            String workflow, String workflowName, List<String> errors) {
+        int canary = workflow.indexOf("\n  canary:\n");
+        int candidateExecution = workflow.indexOf("ZOLT_INSTALL_ROOT=");
+        if (canary < 0 || candidateExecution < canary) {
+            errors.add(workflowName
+                    + " must execute the public candidate only in a separate canary job");
+            return;
+        }
+        String canaryJob = workflow.substring(canary);
+        if (!canaryJob.contains("permissions:\n      contents: read")
+                || canaryJob.contains("contents: write")
+                || canaryJob.contains("environment:")
+                || canaryJob.contains("secrets.")) {
+            errors.add(workflowName
+                    + " canary must have read-only contents permission and no publishing environment or secrets");
         }
     }
 

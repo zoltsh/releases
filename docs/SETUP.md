@@ -37,7 +37,7 @@ The script:
 - makes the default Actions token read-only
 - restricts Actions to reviewed, full-SHA dependencies
 - protects `main` with the reviewed repository rules
-- creates `channel-zap`, `channel-preview`, and `channel-stable`
+- creates `channel-zap`, `channel-preview`, and `channel-stable` with exact deployment-ref policies
 - enables immutable GitHub Releases for every channel
 
 The repository should be public so its release process and evidence are visible.
@@ -100,14 +100,16 @@ They must not come from workflow input or the candidate commit.
 
 ## 5. Configure environments
 
-| Environment | Reviewers | Purpose |
-| --- | ---: | --- |
-| `channel-zap` | 0 | Automatic zap publication |
-| `channel-preview` | 0 | Preview publication after a protected tag |
-| `channel-stable` | 1 | Stable publication after approval |
+| Environment | Allowed workflow ref | Reviewers | Purpose |
+| --- | --- | ---: | --- |
+| `channel-zap` | branch `main` | 0 | Automatic zap publication |
+| `channel-preview` | tag `zolt-preview-*` | 0 | Preview publication after a protected tag |
+| `channel-stable` | tag `zolt-v*` | 1 | Stable publication after approval |
 
 For `channel-stable`, prevent self-review and disable administrator bypass where
-available.
+available. The bootstrap replaces each environment's deployment branch and tag rules
+with the single pattern shown above; a workflow from any other ref cannot receive that
+environment's secrets.
 
 Zap now has a reviewed publisher and is enabled in `policy/channels.toml`. Preview and
 stable must not receive secrets until their own publishers are implemented and
@@ -236,6 +238,8 @@ Before any public release:
 
 - [ ] Immutable releases are enabled.
 - [ ] Branch and tag rules are active.
+- [ ] `channel-zap` permits only the `main` branch.
+- [ ] Preview and stable permit only their protected release-tag patterns.
 - [ ] Stable has one reviewer and prevents self-review.
 - [ ] Zap and preview have no reviewers.
 - [ ] `channel-zap` has the narrow `zolt-dist` Spaces key and matching Ed25519 private key.
