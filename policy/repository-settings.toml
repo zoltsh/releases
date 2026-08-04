@@ -33,6 +33,13 @@ reviewers = 0
 deployment_ref_type = "branch"
 deployment_ref_pattern = "main"
 
+[environments.channel_zap_recovery]
+reviewers = 1
+prevent_self_review = true
+admin_bypass = false
+deployment_ref_type = "branch"
+deployment_ref_pattern = "main"
+
 [environments.channel_preview]
 reviewers = 0
 deployment_ref_type = "tag"

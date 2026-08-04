@@ -127,6 +127,7 @@ Human work per operation:
 | Normal source pull request | One review |
 | Release-sensitive source change | Release-engineer CODEOWNER review |
 | Zap after merge | None |
+| Zap recovery | One protected-environment approval |
 | Preview | Create a protected prerelease tag |
 | Stable | One protected-environment approval |
 | Release-controller change | Two reviews, including the security owner |
@@ -293,14 +294,15 @@ Candidate code never runs with signing or storage credentials for any channel.
 - publishes the immutable release
 - changes the channel file last
 
-### Public canary job
+### Post-publication smoke job
 
 - starts on another fresh GitHub-hosted runner after publication
 - has read-only repository permission
 - has no publishing environment, signing key, or storage credentials
 - downloads the reviewed public bootstrap
 - installs the exact version named by the completed publication job
-- runs the installed candidate only as `zolt --version` and checks the recorded channel URL
+- executes the installer's built-in version and initialization smokes
+- independently confirms `zolt --version` and checks the recorded channel URL
 
 Source code can create a bad candidate. It cannot turn that candidate into a trusted
 preview or stable release by gaining access to publication credentials.
@@ -392,15 +394,15 @@ candidate passes
   -> publish the release index pair
   -> change the zap channel last
   -> start a fresh read-only job with no publishing environment
-  -> install and execute the exact public version as a canary
+  -> install and execute the exact public version in a post-publication smoke
 ```
 
 Zap needs no human approval. Its workflow is hard-coded to zap. Shared publication code
 accepts a channel, but each workflow supplies a fixed value and has only that channel's
 signing environment. The signing and metadata credentials are scoped only to their
 steps. Candidate source is never checked out or executed on that runner. The public
-candidate executes only in the following read-only canary job, where no channel secret
-or write token is available.
+candidate executes only in the following read-only post-publication smoke job, where no
+channel secret or write token is available.
 
 ### Preview publication
 

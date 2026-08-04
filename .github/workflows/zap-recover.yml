@@ -20,7 +20,7 @@ jobs:
   recover:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: channel-zap
+    environment: channel-zap-recovery
     outputs:
       version: ${{ steps.public-verification.outputs.version }}
 
@@ -171,7 +171,7 @@ jobs:
           printf 'error: public zap metadata did not converge to the recovered signed files\n' >&2
           exit 1
 
-  canary:
+  post-publication-smoke:
     needs: recover
     permissions:
       contents: read

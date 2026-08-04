@@ -126,6 +126,26 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void bootstrapMustRestrictZapRecoveryDeploymentsToMain(@TempDir Path root)
+            throws IOException {
+        Path bootstrap = root.resolve("scripts/bootstrap.sh");
+        Files.createDirectories(bootstrap.getParent());
+        Files.writeString(
+                bootstrap,
+                Files.readString(Path.of("scripts/bootstrap.sh"))
+                        .replace(
+                                "configure_environment_ref channel-zap-recovery branch main",
+                                "configure_environment_ref channel-zap-recovery branch '*'"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "bootstrap is missing required repository control: "
+                        + "configure_environment_ref channel-zap-recovery branch main"));
+    }
+
+    @Test
     void candidateBuildMustSyncSourceToolchainBeforeDistribution(@TempDir Path root)
             throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-candidate.yml");
@@ -168,7 +188,7 @@ final class RepositoryValidatorTest {
     }
 
     @Test
-    void zapPublisherMustRunCandidateInUnprivilegedCanary(@TempDir Path root)
+    void zapPublisherMustRunCandidateInUnprivilegedPostPublicationSmoke(@TempDir Path root)
             throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-publish.yml");
         Files.createDirectories(workflow.getParent());
@@ -183,7 +203,45 @@ final class RepositoryValidatorTest {
         new RepositoryAutomationCheck().validate(root, errors);
 
         assertTrue(errors.contains(
-                "zap publish canary must have read-only contents permission and no publishing environment or secrets"));
+                "zap publish post-publication smoke must have read-only contents permission and no publishing environment or secrets"));
+    }
+
+    @Test
+    void policyMustRequireReviewedZapRecovery(@TempDir Path root) throws IOException {
+        Path policy = root.resolve("policy/repository-settings.toml");
+        Files.createDirectories(policy.getParent());
+        Files.copy(Path.of("policy/channels.toml"), root.resolve("policy/channels.toml"));
+        Files.writeString(
+                policy,
+                Files.readString(Path.of("policy/repository-settings.toml"))
+                        .replace(
+                                "[environments.channel_zap_recovery]\nreviewers = 1",
+                                "[environments.channel_zap_recovery]\nreviewers = 0"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryPolicyCheck().validate(root, errors);
+
+        assertTrue(errors.contains("channel-zap-recovery must require one reviewer"));
+    }
+
+    @Test
+    void policyMustEnforceZapRecoveryReviewBoundaries(@TempDir Path root)
+            throws IOException {
+        Path policy = root.resolve("policy/repository-settings.toml");
+        Files.createDirectories(policy.getParent());
+        Files.copy(Path.of("policy/channels.toml"), root.resolve("policy/channels.toml"));
+        Files.writeString(
+                policy,
+                Files.readString(Path.of("policy/repository-settings.toml"))
+                        .replace("prevent_self_review = true", "prevent_self_review = false")
+                        .replace("admin_bypass = false", "admin_bypass = true"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryPolicyCheck().validate(root, errors);
+
+        assertTrue(errors.contains("channel-zap-recovery must prevent self-review"));
+        assertTrue(errors.contains(
+                "channel-zap-recovery must disallow administrator bypass"));
     }
 
     @Test
@@ -272,6 +330,40 @@ final class RepositoryValidatorTest {
         assertTrue(errors.contains(
                 "zap recovery workflow is missing required contract: "
                         + ".draft == false and .prerelease == true and .immutable == true"));
+    }
+
+    @Test
+    void zapRecoveryMustUseReviewedRecoveryEnvironment(@TempDir Path root) throws IOException {
+        Path workflow = root.resolve(".github/workflows/zap-recover.yml");
+        Files.createDirectories(workflow.getParent());
+        Files.writeString(
+                workflow,
+                Files.readString(Path.of(".github/workflows/zap-recover.yml"))
+                        .replace("environment: channel-zap-recovery", "environment: channel-zap"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "zap recovery workflow is missing required contract: "
+                        + "environment: channel-zap-recovery"));
+    }
+
+    @Test
+    void zapRecoveryMustNotReceiveSigningAuthority(@TempDir Path root) throws IOException {
+        Path workflow = root.resolve(".github/workflows/zap-recover.yml");
+        Files.createDirectories(workflow.getParent());
+        Files.writeString(
+                workflow,
+                Files.readString(Path.of(".github/workflows/zap-recover.yml"))
+                        + "\n# ZOLT_RELEASE_ED25519_PRIVATE_KEY\n");
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "zap recovery workflow contains forbidden signing authority: "
+                        + "ZOLT_RELEASE_ED25519_PRIVATE_KEY"));
     }
 
     private static Path copyZoltSetup(Path root) throws IOException {

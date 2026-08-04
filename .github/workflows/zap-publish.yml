@@ -277,7 +277,7 @@ jobs:
           printf 'error: public zap metadata did not converge to the staged signed files\n' >&2
           exit 1
 
-  canary:
+  post-publication-smoke:
     needs: publish
     permissions:
       contents: read

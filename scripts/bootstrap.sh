@@ -5,6 +5,7 @@ ORG="${ZOLT_GITHUB_ORG:-zoltsh}"
 REPO="${ZOLT_RELEASES_REPO:-releases}"
 FULL_REPO="${ORG}/${REPO}"
 REMOTE="${ZOLT_RELEASES_REMOTE:-https://github.com/${FULL_REPO}.git}"
+RECOVERY_REVIEWER="${ZOLT_RECOVERY_REVIEWER:-}"
 
 fail() {
     printf 'error: %s\n' "$1" >&2
@@ -71,11 +72,60 @@ configure_environment_ref() {
         || fail "${environment} must allow only ${ref_type} ${ref_pattern}"
 }
 
+configure_recovery_protection() {
+    local environment="channel-zap-recovery"
+    local endpoint="repos/${FULL_REPO}/environments/${environment}"
+    local reviewer_id protection_payload environment_state
+
+    [ -n "$RECOVERY_REVIEWER" ] \
+        || fail "set ZOLT_RECOVERY_REVIEWER to the trusted recovery approver login"
+    reviewer_id="$(gh api "users/${RECOVERY_REVIEWER}" --jq .id 2>/dev/null || true)"
+    [ -n "$reviewer_id" ] \
+        || fail "recovery reviewer ${RECOVERY_REVIEWER} is not a GitHub user"
+
+    protection_payload="$(jq -n \
+        --argjson reviewer_id "$reviewer_id" '
+        {
+            wait_timer: 0,
+            prevent_self_review: true,
+            can_admins_bypass: false,
+            reviewers: [{type: "User", id: $reviewer_id}],
+            deployment_branch_policy: {
+                protected_branches: false,
+                custom_branch_policies: true
+            }
+        }
+    ')"
+    gh api --method PUT "$endpoint" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10" \
+        --input - <<<"$protection_payload" >/dev/null
+
+    environment_state="$(gh api "$endpoint" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10")"
+    jq -e \
+        --arg login "$RECOVERY_REVIEWER" '
+        .can_admins_bypass == false and
+        any(.protection_rules[];
+            .type == "required_reviewers" and
+            .prevent_self_review == true and
+            (.reviewers | length) == 1 and
+            .reviewers[0].type == "User" and
+            .reviewers[0].reviewer.login == $login)
+    ' <<<"$environment_state" >/dev/null \
+        || fail "channel-zap-recovery must require only ${RECOVERY_REVIEWER}, prevent self-review, and disallow administrator bypass"
+}
+
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required: https://cli.github.com/"
 command -v jq >/dev/null 2>&1 || fail "jq is required: https://jqlang.github.io/jq/"
 
 gh auth status >/dev/null 2>&1 || fail "authenticate GitHub CLI with: gh auth login"
+
+if [ -z "$RECOVERY_REVIEWER" ]; then
+    RECOVERY_REVIEWER="$(gh api user --jq .login)"
+fi
 
 org_role="$(gh api "user/memberships/orgs/${ORG}" --jq .role 2>/dev/null || true)"
 if [ "$org_role" != "admin" ]; then
@@ -197,6 +247,8 @@ case "$ruleset_count" in
 esac
 
 configure_environment_ref channel-zap branch main
+configure_environment_ref channel-zap-recovery branch main
+configure_recovery_protection
 configure_environment_ref channel-preview tag 'zolt-preview-*'
 configure_environment_ref channel-stable tag 'zolt-v*'
 
@@ -224,9 +276,10 @@ Still required in GitHub:
   3. Make release-engineers owners of sensitive paths through CODEOWNERS.
   4. Add one trusted reviewer to channel-stable and prevent self-review.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
-  6. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
-  7. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
-  8. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
+  6. Keep channel-zap-recovery approval-gated; the bootstrap configures ${RECOVERY_REVIEWER} and prevents self-review.
+  7. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
+  8. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
+  9. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
 
 No publication secret is required for candidate builds.
 EOF

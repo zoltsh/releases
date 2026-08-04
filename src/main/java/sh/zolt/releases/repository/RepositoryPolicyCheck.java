@@ -241,6 +241,8 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 errors);
         TomlTable environments = table(settings, "environments", errors);
         TomlTable zapEnvironment = table(environments, "channel_zap", errors);
+        TomlTable zapRecoveryEnvironment =
+                table(environments, "channel_zap_recovery", errors);
         TomlTable previewEnvironment = table(environments, "channel_preview", errors);
         TomlTable stableEnvironment = table(environments, "channel_stable", errors);
         requireLong(
@@ -260,6 +262,36 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 "deployment_ref_pattern",
                 "main",
                 "channel-zap deployments must be restricted to main",
+                errors);
+        requireLong(
+                zapRecoveryEnvironment,
+                "reviewers",
+                1L,
+                "channel-zap-recovery must require one reviewer",
+                errors);
+        requireBoolean(
+                zapRecoveryEnvironment,
+                "prevent_self_review",
+                true,
+                "channel-zap-recovery must prevent self-review",
+                errors);
+        requireBoolean(
+                zapRecoveryEnvironment,
+                "admin_bypass",
+                false,
+                "channel-zap-recovery must disallow administrator bypass",
+                errors);
+        requireString(
+                zapRecoveryEnvironment,
+                "deployment_ref_type",
+                "branch",
+                "channel-zap-recovery deployments must use a branch policy",
+                errors);
+        requireString(
+                zapRecoveryEnvironment,
+                "deployment_ref_pattern",
+                "main",
+                "channel-zap-recovery deployments must be restricted to main",
                 errors);
         requireString(
                 previewEnvironment,

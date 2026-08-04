@@ -187,7 +187,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap publish workflow contains forbidden candidate authority: " + fragment);
             }
         }
-        validateUnprivilegedCanary(workflow, "zap publish", errors);
+        validateUnprivilegedPostPublicationSmoke(workflow, "zap publish", errors);
         int immutable = workflow.indexOf("scripts/publish-github-release");
         int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
@@ -212,7 +212,12 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap recovery workflow is missing required contract: " + fragment);
             }
         }
-        validateUnprivilegedCanary(workflow, "zap recovery", errors);
+        for (String fragment : RepositoryRules.FORBIDDEN_RECOVER_WORKFLOW_FRAGMENTS) {
+            if (workflow.contains(fragment)) {
+                errors.add("zap recovery workflow contains forbidden signing authority: " + fragment);
+            }
+        }
+        validateUnprivilegedPostPublicationSmoke(workflow, "zap recovery", errors);
         int immutable = workflow.indexOf(".immutable == true");
         int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
@@ -226,22 +231,22 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         }
     }
 
-    private static void validateUnprivilegedCanary(
+    private static void validateUnprivilegedPostPublicationSmoke(
             String workflow, String workflowName, List<String> errors) {
-        int canary = workflow.indexOf("\n  canary:\n");
+        int smoke = workflow.indexOf("\n  post-publication-smoke:\n");
         int candidateExecution = workflow.indexOf("ZOLT_INSTALL_ROOT=");
-        if (canary < 0 || candidateExecution < canary) {
+        if (smoke < 0 || candidateExecution < smoke) {
             errors.add(workflowName
-                    + " must execute the public candidate only in a separate canary job");
+                    + " must execute the public candidate only in a separate post-publication smoke job");
             return;
         }
-        String canaryJob = workflow.substring(canary);
-        if (!canaryJob.contains("permissions:\n      contents: read")
-                || canaryJob.contains("contents: write")
-                || canaryJob.contains("environment:")
-                || canaryJob.contains("secrets.")) {
+        String smokeJob = workflow.substring(smoke);
+        if (!smokeJob.contains("permissions:\n      contents: read")
+                || smokeJob.contains("contents: write")
+                || smokeJob.contains("environment:")
+                || smokeJob.contains("secrets.")) {
             errors.add(workflowName
-                    + " canary must have read-only contents permission and no publishing environment or secrets");
+                    + " post-publication smoke must have read-only contents permission and no publishing environment or secrets");
         }
     }
 
