@@ -341,11 +341,13 @@ curl -fsSL https://dist.zolt.sh/install.sh | sh
 > This path begins by trusting HTTPS. Signed metadata protects later downloads; it
 > cannot independently authenticate an installer that has already been replaced.
 
-The current shell installer trusts HTTPS for the channel file and verifies the selected
-archive checksum. It does not yet verify the Ed25519 channel sidecar. Native Zolt update
-clients do verify that sidecar. Even after installer-side signature verification is
-added, an attacker who replaced the installer could also replace its embedded key. Do
-not describe `curl | sh` as independently authenticated.
+The current shell installer trusts HTTPS for the channel file, requires the selected
+archive and checksum URLs to match the exact immutable `zoltsh/releases` tag, version,
+target, and filenames, then verifies the archive checksum. It does not verify the
+Ed25519 channel sidecar. Native Zolt update clients do verify that sidecar. Even after
+installer-side signature verification is added, an attacker who replaced the installer
+could also replace its embedded key. Do not describe `curl | sh` as independently
+authenticated.
 
 Offer two install paths:
 
