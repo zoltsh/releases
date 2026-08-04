@@ -334,17 +334,23 @@ silently if the existing private key is lost.
 The public command pins the installer code to one immutable release snapshot:
 
 ```sh
+version='0.1.0-zap.20260804.c72838dc828e'
+release="https://github.com/zoltsh/releases/releases/download/zolt-zap-$version"
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
-  https://github.com/zoltsh/releases/releases/download/zolt-zap-0.1.0-zap.20260804.89fc63944134/install.sh \
-  | sh
+  "$release/install.sh" |
+  ZOLT_INSTALL_CHANNEL=zap \
+  ZOLT_INSTALL_VERSION="$version" \
+  ZOLT_INSTALL_CHANNEL_URL="$release/channel-zap.json" \
+  ZOLT_INSTALL_UPDATE_CHANNEL_URL=https://dist.zolt.sh/channels/zap.json \
+  sh
 ```
 
-The shell installer then reads the moving channel over HTTPS, but accepts only the
-exact version, target, filenames, archive URL, and checksum URL under an immutable
-`zoltsh/releases` tag before verifying SHA-256. A compromised metadata origin can deny
-installation or select another official immutable release; it cannot redirect the
-installer to attacker-controlled executable bytes. Native Zolt update clients also
-verify the channel's Ed25519 sidecar with a bundled public key.
+The shell installer reads the channel snapshot from that same immutable release and
+requires the named version, channel, target, filenames, archive URL, and checksum URL
+before verifying SHA-256. It records the canonical moving channel only for later
+self-updates. A compromise of that metadata origin without the signing key can deny an
+update but cannot authorize executable bytes: native Zolt clients verify the channel's
+Ed25519 sidecar with a bundled public key.
 
 For reproducible automation, pin `install.sh`, `channel-zap.json`, the requested
 version, archives, and checksums from one immutable GitHub Release. The primary README
