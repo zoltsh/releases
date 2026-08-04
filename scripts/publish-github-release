@@ -108,6 +108,7 @@ channel_signature="$publication/channels/$channel.json.sig"
 index_json="$publication/releases/$channel.json"
 index_signature="$publication/releases/$channel.json.sig"
 required_files=(
+    "$version_directory/install.sh"
     "$version_directory/release-manifest.json"
     "$version_directory/release-record.json"
     "$version_directory/source-run.json"
@@ -126,6 +127,12 @@ for file in "${required_files[@]}"; do
         exit 1
     fi
 done
+if [[ ! -x "$version_directory/install.sh" \
+    || "$(head -n 1 "$version_directory/install.sh")" != '#!/bin/sh' ]]; then
+    printf 'error: staged GitHub Release installer must be an executable POSIX shell script\n' >&2
+    exit 1
+fi
+sh -n "$version_directory/install.sh"
 if find "$publication" -type l -print -quit | grep -q .; then
     printf 'error: staged publication must not contain symbolic links\n' >&2
     exit 1

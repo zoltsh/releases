@@ -110,6 +110,19 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void installerPublisherMustWriteOnlyTheInstaller(@TempDir Path root) throws IOException {
+        Path publisher = root.resolve("scripts/publish-installer");
+        Files.createDirectories(publisher.getParent());
+        Files.writeString(publisher, "aws s3 cp artifacts/zap s3://zolt-dist/install.sh\n");
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "installer publisher must write only install.sh with bounded curl SigV4 requests"));
+    }
+
+    @Test
     void zapRecoveryMustRequireAnImmutableRelease(@TempDir Path root) throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-recover.yml");
         Files.createDirectories(workflow.getParent());

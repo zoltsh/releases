@@ -29,17 +29,19 @@ Use these procedures when a release fails or release authority may be compromise
 1. Do not change the zap channel if the build, checks, revalidation, signing, or upload
    fails.
 2. Leave the previous zap release current.
-3. If the immutable GitHub Release exists but the channel did not change, rerun the same
+3. If installer publication fails, leave the previous channel current. The publisher
+   can safely retry the source-matched installer before moving metadata.
+4. If the immutable GitHub Release exists but the channel did not change, rerun the same
    publisher. It verifies and reuses the exact release before retrying metadata.
    If the original publisher cannot reach Spaces, dispatch `recover zap metadata` with
    that immutable release tag. The recovery workflow verifies the release and its signed
    metadata snapshots before moving only the four channel metadata objects.
-4. If the release index changed but the channel did not, rerun the same publisher. The
+5. If the release index changed but the channel did not, rerun the same publisher. The
    channel JSON remains the last write.
-5. If the channel changed to a bad release, disable `zap publish`, preserve the signed
+6. If the channel changed to a bad release, disable `zap publish`, preserve the signed
    bad metadata, and use a reviewed recovery change to publish newly signed channel and
    release-index files that point to the last good immutable version.
-6. Keep the logs, GitHub Release and asset IDs, release record, source evidence, and
+7. Keep the logs, GitHub Release and asset IDs, release record, source evidence, and
    staged signatures. Keep Space object version IDs only when versioning is enabled.
 
 ## Preview failure

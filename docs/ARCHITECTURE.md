@@ -79,13 +79,15 @@ The stable and preview workflows are not enabled. Before either is enabled, its 
 signing, and approval path must be completed and reviewed.
 
 `https://dist.zolt.sh/install.sh` is the current installer. Until stable exists, it
-follows `channels/zap.json`.
+follows `channels/zap.json`. Zap publication extracts it from the exact verified source
+commit, preserves an immutable copy in the GitHub Release, then updates the public copy
+before moving channel metadata.
 
 ## Storage
 
 | Location | Stores |
 | :--- | :--- |
-| GitHub Releases | Native archives, checksums, manifests, release records, source evidence, and signed metadata snapshots |
+| GitHub Releases | Native archives, checksums, the source-matched installer, manifests, release records, source evidence, and signed metadata snapshots |
 | `zolt-dist` Space | The installer and current signed channel/release-index metadata |
 
 Every channel publishes one complete immutable GitHub Release. Zap and preview releases
@@ -93,10 +95,11 @@ are prereleases; stable releases are normal releases and may be marked latest. R
 tags and assets are never reused or replaced. A retry must verify the existing tag,
 asset set, sizes, and SHA-256 digests before accepting it.
 
-The mutable zap files are `channels/zap.json` and `releases/zap.json`, each with an
-Ed25519 `.sig` sidecar. The publisher first makes the GitHub Release immutable, then
-writes the release-index pair, the channel signature, and `channels/zap.json` last.
-The archive URLs in the signed channel point directly at that immutable GitHub Release.
+The mutable zap files are `install.sh`, `channels/zap.json`, and `releases/zap.json`;
+the two JSON files each have an Ed25519 `.sig` sidecar. The publisher first makes the
+GitHub Release immutable, updates and verifies the source-matched installer, then writes
+the release-index pair, the channel signature, and `channels/zap.json` last. The archive
+URLs in the signed channel point directly at that immutable GitHub Release.
 
 DigitalOcean object versioning is optional. Each GitHub Release contains immutable
 copies of the signed channel and index produced for that publication, so operators can

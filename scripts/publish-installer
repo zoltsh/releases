@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+channel=""
+publication=""
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --channel)
+            channel="${2:?missing value for --channel}"
+            shift 2
+            ;;
+        --publication)
+            publication="${2:?missing value for --publication}"
+            shift 2
+            ;;
+        *)
+            printf 'error: unknown argument %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ "$channel" != "zap" || -z "$publication" ]]; then
+    printf 'usage: scripts/publish-installer --channel zap --publication <directory>\n' >&2
+    exit 2
+fi
+if [[ ! -d "$publication" ]]; then
+    printf 'error: publication directory does not exist: %s\n' "$publication" >&2
+    exit 2
+fi
+publication="$(cd "$publication" && pwd)"
+
+curl_cli="${ZOLT_PUBLISH_CURL:-curl}"
+if ! command -v "$curl_cli" >/dev/null 2>&1; then
+    printf 'error: installer publication requires curl on PATH\n' >&2
+    exit 2
+fi
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    printf 'error: installer publication requires Spaces access credentials\n' >&2
+    exit 2
+fi
+
+shopt -s nullglob
+version_directories=("$publication/artifacts/$channel"/*)
+shopt -u nullglob
+if [[ "${#version_directories[@]}" -ne 1 || ! -d "${version_directories[0]}" ]]; then
+    printf 'error: publication must contain exactly one artifacts/%s version directory\n' "$channel" >&2
+    exit 2
+fi
+installer="${version_directories[0]}/install.sh"
+if [[ ! -f "$installer" || -L "$installer" || ! -x "$installer" ]]; then
+    printf 'error: staged installer must be one regular executable file: %s\n' "$installer" >&2
+    exit 1
+fi
+if [[ "$(head -n 1 "$installer")" != '#!/bin/sh' ]]; then
+    printf 'error: staged installer must use the reviewed POSIX shell entrypoint\n' >&2
+    exit 1
+fi
+if [[ "$(wc -c <"$installer" | tr -d ' ')" -gt 1048576 ]]; then
+    printf 'error: staged installer exceeds the 1 MiB publication limit\n' >&2
+    exit 1
+fi
+sh -n "$installer"
+
+endpoint="https://nyc3.digitaloceanspaces.com"
+bucket="zolt-dist"
+url="$endpoint/$bucket/install.sh"
+spaces_curl() {
+    "$curl_cli" \
+        --proto '=https' \
+        --tlsv1.2 \
+        --fail \
+        --silent \
+        --show-error \
+        --connect-timeout "${ZOLT_PUBLISH_CONNECT_TIMEOUT_SECONDS:-10}" \
+        --max-time "${ZOLT_PUBLISH_TOTAL_TIMEOUT_SECONDS:-30}" \
+        --aws-sigv4 "aws:amz:nyc3:s3" \
+        --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+        "$@"
+}
+
+printf 'Writing s3://%s/install.sh\n' "$bucket"
+spaces_curl \
+    --request PUT \
+    --upload-file "$installer" \
+    --header 'x-amz-acl: public-read' \
+    --header 'Cache-Control: no-cache' \
+    --header 'Content-Type: text/x-shellscript' \
+    --output /dev/null \
+    "$url"
+
+downloaded="$(mktemp)"
+trap 'rm -f "$downloaded"' EXIT
+printf 'Reading s3://%s/install.sh\n' "$bucket"
+spaces_curl --output "$downloaded" "$url"
+if ! cmp -s "$installer" "$downloaded"; then
+    printf 'error: remote installer differs from the staged source-commit installer\n' >&2
+    exit 1
+fi
+
+printf 'Published source-matched installer to https://dist.zolt.sh/install.sh\n'

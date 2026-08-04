@@ -57,6 +57,7 @@ final class RepositoryRules {
             "scripts/check",
             "scripts/publish-channel-metadata",
             "scripts/publish-github-release",
+            "scripts/publish-installer",
             "scripts/publish-release-test",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml",
@@ -117,10 +118,12 @@ final class RepositoryRules {
             "sign-release-file",
             "ZOLT_RELEASE_ED25519_PRIVATE_KEY: ${{ secrets.ZOLT_RELEASE_ED25519_PRIVATE_KEY }}",
             "GH_TOKEN: ${{ github.token }}",
+            "git -C source-history show \"$candidate_commit:scripts/install-zolt\"",
             "scripts/publish-github-release",
             "--target-sha \"$CANDIDATE_CONTROLLER_SHA\"",
             "AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}",
             "AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}",
+            "scripts/publish-installer",
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json");
     static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
@@ -146,7 +149,11 @@ final class RepositoryRules {
             "DO_SPACES_",
             "PRIVATE_KEY: ${{ secrets.ZOLT_CHANNEL");
     static final List<String> SENSITIVE_SOURCE_PATHS =
-            List.of("/.github/workflows/", "/.github/CODEOWNERS", "/scripts/*release*");
+            List.of(
+                    "/.github/workflows/",
+                    "/.github/CODEOWNERS",
+                    "/scripts/install-zolt",
+                    "/scripts/*release*");
 
     private RepositoryRules() {}
 }

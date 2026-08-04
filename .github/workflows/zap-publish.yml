@@ -167,6 +167,19 @@ jobs:
           git -C source-history merge-base --is-ancestor \
               "$candidate_commit" refs/remotes/origin/main
 
+      - name: Stage exact source-commit installer
+        run: |
+          set -euo pipefail
+          candidate_commit="$(jq -er '.source.commit' record/release-record.json)"
+          version="$(jq -er '.version' record/release-record.json)"
+          installer="out/publication/artifacts/zap/$version/install.sh"
+          test "$(git -C source-history ls-tree "$candidate_commit" -- scripts/install-zolt \
+              | awk '{ print $1 " " $2 }')" = "100755 blob"
+          git -C source-history show "$candidate_commit:scripts/install-zolt" > "$installer"
+          chmod 0755 "$installer"
+          test "$(head -n 1 "$installer")" = '#!/bin/sh'
+          sh -n "$installer"
+
       - name: Sign trusted zap metadata
         env:
           ZOLT_RELEASE_ED25519_PRIVATE_KEY: ${{ secrets.ZOLT_RELEASE_ED25519_PRIVATE_KEY }}
@@ -196,6 +209,15 @@ jobs:
               --publication out/publication \
               --target-sha "$CANDIDATE_CONTROLLER_SHA"
 
+      - name: Publish source-matched installer before channel metadata
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}
+        run: |
+          scripts/publish-installer \
+              --channel zap \
+              --publication out/publication
+
       - name: Move signed zap channel metadata last
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
@@ -214,6 +236,8 @@ jobs:
           for attempt in 1 2 3 4 5 6; do
               if curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json \
                       https://dist.zolt.sh/channels/zap.json \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-installer.sh \
+                      https://dist.zolt.sh/install.sh \
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json.sig \
                       https://dist.zolt.sh/channels/zap.json.sig \
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json \
@@ -221,6 +245,9 @@ jobs:
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json.sig \
                       https://dist.zolt.sh/releases/zap.json.sig \
                   && cmp -s out/publication/channels/zap.json out/public-channel.json \
+                  && cmp -s \
+                      "out/publication/artifacts/zap/$(jq -er '.version' out/public-channel.json)/install.sh" \
+                      out/public-installer.sh \
                   && cmp -s out/publication/channels/zap.json.sig out/public-channel.json.sig \
                   && cmp -s out/publication/releases/zap.json out/public-index.json \
                   && cmp -s out/publication/releases/zap.json.sig out/public-index.json.sig \
