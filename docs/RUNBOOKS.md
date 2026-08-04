@@ -10,8 +10,9 @@ Use these procedures when a release fails or release authority may be compromise
 > deployment IDs before changing anything.
 
 > [!IMPORTANT]
-> Zap publication uses immutable GitHub Releases and metadata in `zolt-dist`. Add the
-> real owner and incident-contact details before enabling preview or stable.
+> Zap publication uses immutable GitHub Releases plus the stable bootstrap and metadata
+> in `zolt-dist`. Add the real owner and incident-contact details before enabling preview
+> or stable.
 
 ## First response
 
@@ -29,13 +30,14 @@ Use these procedures when a release fails or release authority may be compromise
 1. Do not change the zap channel if the build, checks, revalidation, signing, or upload
    fails.
 2. Leave the previous zap release current.
-3. If legacy installer retirement fails, leave the previous channel current and fix
-   the Spaces delete permission before retrying.
+3. If stable installer bootstrap publication or read-back verification fails, leave the
+   previous channel current and fix the Spaces write path before retrying.
 4. If the immutable GitHub Release exists but the channel did not change, rerun the same
    publisher. It verifies and reuses the exact release before retrying metadata.
    If the original publisher cannot reach Spaces, dispatch `recover zap metadata` with
    that immutable release tag. The recovery workflow verifies the release and its signed
-   metadata snapshots before moving only the four channel metadata objects.
+   metadata snapshots before restoring the reviewed bootstrap and four channel metadata
+   objects.
 5. If the release index changed but the channel did not, rerun the same publisher. The
    channel JSON remains the last write.
 6. If the channel changed to a bad release, disable `zap publish`, preserve the signed
@@ -67,13 +69,17 @@ Use these procedures when a release fails or release authority may be compromise
 ## Channel credential exposure
 
 1. Disable that channel's workflow and environment.
-2. Revoke its storage credential and signing key.
-3. Check whether the other channels were reachable.
-4. Use the offline root process to authorize a replacement channel key.
-5. Publish a new key-authority document and channel file, both with higher sequence or
+2. Revoke its storage credential and signing key. Because the Spaces credential can
+   replace `install.sh`, treat curl installations during the exposure window as
+   potentially compromised even when signed metadata stayed valid.
+3. Preserve object-access logs and compare the public installer with the reviewed
+   `scripts/install-bootstrap` bytes before restoring it with a new credential.
+4. Check whether the other channels were reachable.
+5. Use the offline root process to authorize a replacement channel key.
+6. Publish a new key-authority document and channel file, both with higher sequence or
    generation numbers.
-6. Check that existing clients can move to the new key.
-7. Publish an incident report appropriate to the impact.
+7. Check that existing clients can move to the new key.
+8. Publish an incident report appropriate to the impact.
 
 ## Offline root key exposure
 

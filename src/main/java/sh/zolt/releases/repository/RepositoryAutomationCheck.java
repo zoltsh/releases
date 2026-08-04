@@ -162,15 +162,15 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
             }
         }
         int immutable = workflow.indexOf("scripts/publish-github-release");
-        int retiredInstaller = workflow.indexOf("scripts/retire-legacy-installer");
+        int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
         int publicVerification = workflow.indexOf("Verify public zap publication");
         if (immutable < 0
-                || retiredInstaller < immutable
-                || metadata < retiredInstaller
+                || bootstrap < immutable
+                || metadata < bootstrap
                 || publicVerification < metadata) {
             errors.add(
-                    "zap publish workflow must publish immutable GitHub assets, retire the legacy mutable installer, move metadata, then verify the public result");
+                    "zap publish workflow must publish immutable GitHub assets, publish the stable installer bootstrap, move metadata, then verify the public result");
         }
     }
 
@@ -186,17 +186,22 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
             }
         }
         int immutable = workflow.indexOf(".immutable == true");
+        int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
         int publicVerification = workflow.indexOf("Verify public zap recovery");
-        if (immutable < 0 || metadata < immutable || publicVerification < metadata) {
+        if (immutable < 0
+                || bootstrap < immutable
+                || metadata < bootstrap
+                || publicVerification < metadata) {
             errors.add(
-                    "zap recovery workflow must verify an immutable release, move metadata, then verify the public result");
+                    "zap recovery workflow must verify an immutable release, publish the stable installer bootstrap, move metadata, then verify the public result");
         }
     }
 
     private static void validatePublicationBackends(Path root, List<String> errors) {
         Path githubPublisher = root.resolve("scripts/publish-github-release");
-        Path installerRetirement = root.resolve("scripts/retire-legacy-installer");
+        Path installerBootstrap = root.resolve("scripts/install-bootstrap");
+        Path installerPublisher = root.resolve("scripts/publish-installer-bootstrap");
         Path metadataPublisher = root.resolve("scripts/publish-channel-metadata");
         if (Files.isRegularFile(githubPublisher)) {
             String publisher = RepositoryFiles.read(githubPublisher);
@@ -209,19 +214,30 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("GitHub Release publisher must not upload release assets to object storage");
             }
         }
-        if (Files.isRegularFile(installerRetirement)) {
-            String retirement = RepositoryFiles.read(installerRetirement);
-            if (!retirement.contains("$bucket/install.sh")
-                    || !retirement.contains("--request DELETE")
-                    || !retirement.contains("--aws-sigv4 \"aws:amz:nyc3:s3\"")
-                    || !retirement.contains("--connect-timeout")
-                    || !retirement.contains("--max-time")
-                    || !retirement.contains("--write-out '%{http_code}'")
-                    || !retirement.contains("\"$status\" != 404")
-                    || retirement.contains("--upload-file")
-                    || retirement.contains("s3api")) {
+        if (Files.isRegularFile(installerBootstrap)) {
+            String bootstrap = RepositoryFiles.read(installerBootstrap);
+            if (!RepositoryRules.PINNED_BOOTSTRAP_INSTALLER_URL.matcher(bootstrap).find()
+                    || !RepositoryRules.PINNED_BOOTSTRAP_INSTALLER_SHA256.matcher(bootstrap).find()
+                    || !bootstrap.contains("--proto-redir '=https'")
+                    || !bootstrap.contains("sha256_file \"$installer\"")
+                    || !bootstrap.contains("sh \"$installer\" \"$@\"")) {
                 errors.add(
-                        "legacy installer retirement must only delete install.sh and prove authenticated HTTP 404 with bounded curl SigV4 requests");
+                        "stable installer bootstrap must verify and execute a pinned immutable GitHub installer");
+            }
+        }
+        if (Files.isRegularFile(installerPublisher)) {
+            String publisher = RepositoryFiles.read(installerPublisher);
+            if (!publisher.contains("key=\"install.sh\"")
+                    || !publisher.contains("--request PUT")
+                    || !publisher.contains("--upload-file \"$bootstrap\"")
+                    || !publisher.contains("--aws-sigv4 \"aws:amz:nyc3:s3\"")
+                    || !publisher.contains("--connect-timeout")
+                    || !publisher.contains("--max-time")
+                    || !publisher.contains("cmp -s \"$bootstrap\" \"$downloaded\"")
+                    || publisher.contains("artifacts/")
+                    || publisher.contains("s3api")) {
+                errors.add(
+                        "installer bootstrap publisher must upload and verify only the reviewed install.sh with bounded curl SigV4 requests");
             }
         }
         if (Files.isRegularFile(metadataPublisher)) {

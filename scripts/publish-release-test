@@ -413,22 +413,18 @@ export ZOLT_PUBLISH_CURL="$fake_curl"
 export AWS_ACCESS_KEY_ID="test-access-key"
 printf -v AWS_SECRET_ACCESS_KEY '%s' "test-secret-key"
 export AWS_SECRET_ACCESS_KEY
-scripts/retire-legacy-installer --channel zap
-if [[ -e "$spaces_store/zolt-dist/install.sh" ]]; then
-    printf 'error: legacy mutable installer was not deleted\n' >&2
-    exit 1
-fi
+scripts/publish-installer-bootstrap --channel zap
+cmp scripts/install-bootstrap "$spaces_store/zolt-dist/install.sh"
 if [[ "$(head -n 1 "$spaces_log")" != "install.sh" ]]; then
-    printf 'error: installer retirement did not delete only install.sh\n' >&2
+    printf 'error: installer bootstrap publisher did not write install.sh first\n' >&2
     exit 1
 fi
 export ZOLT_FAKE_SPACES_GET_STATUS=500
-if scripts/retire-legacy-installer --channel zap >"$temporary/retirement-status.log" 2>&1; then
-    printf 'error: installer retirement accepted an ambiguous verification failure\n' >&2
+if scripts/publish-installer-bootstrap --channel zap >"$temporary/bootstrap-status.log" 2>&1; then
+    printf 'error: installer bootstrap publisher accepted an ambiguous verification failure\n' >&2
     exit 1
 fi
 unset ZOLT_FAKE_SPACES_GET_STATUS
-grep -F 'authenticated GET returned HTTP 500' "$temporary/retirement-status.log" >/dev/null
 scripts/publish-channel-metadata \
     --channel zap \
     --publication "$zap_publication" \
@@ -455,4 +451,4 @@ scripts/publish-channel-metadata \
     --publication "$zap_publication" \
     --expected-current-channel "$zap_publication/channels/zap.json" >/dev/null
 
-printf 'GitHub Release and metadata-only channel publisher tests passed\n'
+printf 'GitHub Release, installer bootstrap, and channel publisher tests passed\n'

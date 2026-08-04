@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+if [[ "${1:-}" != "--channel" || "${2:-}" != "zap" || "$#" -ne 2 ]]; then
+    printf 'usage: scripts/publish-installer-bootstrap --channel zap\n' >&2
+    exit 2
+fi
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    printf 'error: installer bootstrap publication requires Spaces access credentials\n' >&2
+    exit 2
+fi
+
+curl_cli="${ZOLT_PUBLISH_CURL:-curl}"
+if ! command -v "$curl_cli" >/dev/null 2>&1; then
+    printf 'error: installer bootstrap publication requires curl on PATH\n' >&2
+    exit 2
+fi
+
+bootstrap="scripts/install-bootstrap"
+if [[ ! -x "$bootstrap" || "$(head -n 1 "$bootstrap")" != '#!/bin/sh' ]]; then
+    printf 'error: installer bootstrap must be an executable POSIX shell script\n' >&2
+    exit 1
+fi
+sh -n "$bootstrap"
+
+endpoint="https://nyc3.digitaloceanspaces.com"
+bucket="zolt-dist"
+key="install.sh"
+url="$endpoint/$bucket/$key"
+spaces_curl() {
+    "$curl_cli" \
+        --proto '=https' \
+        --tlsv1.2 \
+        --fail \
+        --silent \
+        --show-error \
+        --connect-timeout "${ZOLT_PUBLISH_CONNECT_TIMEOUT_SECONDS:-10}" \
+        --max-time "${ZOLT_PUBLISH_TOTAL_TIMEOUT_SECONDS:-30}" \
+        --aws-sigv4 "aws:amz:nyc3:s3" \
+        --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+        "$@"
+}
+
+printf 'Writing stable installer bootstrap to s3://%s/%s\n' "$bucket" "$key"
+spaces_curl \
+    --request PUT \
+    --upload-file "$bootstrap" \
+    --header 'x-amz-acl: public-read' \
+    --header 'Cache-Control: no-cache' \
+    --header 'Content-Type: text/x-shellscript; charset=utf-8' \
+    --output /dev/null \
+    "$url"
+
+downloaded="$(mktemp)"
+trap 'rm -f "$downloaded"' EXIT
+spaces_curl --output "$downloaded" "$url"
+if ! cmp -s "$bootstrap" "$downloaded"; then
+    printf 'error: remote installer bootstrap differs from reviewed repository bytes\n' >&2
+    exit 1
+fi
+
+printf 'Published stable installer bootstrap backed by a pinned immutable GitHub installer\n'

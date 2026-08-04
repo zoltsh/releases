@@ -106,7 +106,7 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                     configuredChannel,
                     "bucket",
                     "zolt-dist",
-                    "all channels must use the metadata-only zolt-dist Space",
+                    "all channels must use the shared bootstrap and metadata zolt-dist Space",
                     errors);
         }
         distinct(

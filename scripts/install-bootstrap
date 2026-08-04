@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+BOOTSTRAP_INSTALLER_URL='https://github.com/zoltsh/releases/releases/download/zolt-zap-0.1.0-zap.20260804.c72838dc828e/install.sh'
+BOOTSTRAP_INSTALLER_SHA256='a1142bdefc4dbf68e40372e7550f649aea8b2dc6499d0a0bd9aa83ea8e348186'
+CURL="${ZOLT_BOOTSTRAP_CURL:-curl}"
+
+fail() {
+  printf 'error: %s\n' "$1" >&2
+  exit 1
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+sha256_file() {
+  path="$1"
+  if command_exists sha256sum; then
+    sha256sum "$path" | awk '{ print $1 }'
+  elif command_exists openssl; then
+    openssl dgst -sha256 "$path" | awk '{ print $NF }'
+  elif command_exists shasum; then
+    LC_ALL=C shasum -a 256 "$path" | awk '{ print $1 }'
+  else
+    fail "sha256sum, openssl, or shasum is required to verify the Zolt installer."
+  fi
+}
+
+if ! command_exists "$CURL"; then
+  fail "curl is required to download the Zolt installer."
+fi
+
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/zolt-bootstrap.XXXXXX")"
+trap 'rm -rf "$work_dir"' EXIT INT TERM
+installer="$work_dir/install.sh"
+
+"$CURL" \
+  --proto '=https' \
+  --proto-redir '=https' \
+  --tlsv1.2 \
+  -fsSL \
+  "$BOOTSTRAP_INSTALLER_URL" \
+  -o "$installer"
+
+actual_sha256="$(sha256_file "$installer")"
+if [ "$actual_sha256" != "$BOOTSTRAP_INSTALLER_SHA256" ]; then
+  fail "immutable GitHub installer SHA-256 mismatch."
+fi
+if [ "$(head -n 1 "$installer")" != '#!/bin/sh' ]; then
+  fail "immutable GitHub installer is not the expected POSIX shell script."
+fi
+sh -n "$installer" || fail "immutable GitHub installer has invalid shell syntax."
+
+sh "$installer" "$@"

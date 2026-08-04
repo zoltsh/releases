@@ -16,6 +16,12 @@ final class RepositoryRules {
                     + "zolt-zap-[^/\\s]+/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
     static final Pattern PINNED_ZOLT_CHECKSUM =
             Pattern.compile("ZOLT_ARCHIVE_SHA256:\\s*[0-9a-f]{64}");
+    static final Pattern PINNED_BOOTSTRAP_INSTALLER_URL = Pattern.compile(
+            "BOOTSTRAP_INSTALLER_URL='https://github\\.com/zoltsh/releases/releases/download/"
+                    + "zolt-zap-(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
+                    + "-zap\\.[0-9]{8}\\.[0-9a-f]{12}/install\\.sh'");
+    static final Pattern PINNED_BOOTSTRAP_INSTALLER_SHA256 =
+            Pattern.compile("BOOTSTRAP_INSTALLER_SHA256='[0-9a-f]{64}'");
     static final Pattern OTHER_TOOLCHAIN = Pattern.compile(
             "\\b(?:python3?|node|npm|typescript)\\b|\\.py\\b|\\.ts\\b|\\bunittest\\b",
             Pattern.CASE_INSENSITIVE);
@@ -54,9 +60,10 @@ final class RepositoryRules {
             "schemas/release-index-v1.schema.json",
             "scripts/bootstrap.sh",
             "scripts/check",
+            "scripts/install-bootstrap",
             "scripts/publish-channel-metadata",
             "scripts/publish-github-release",
-            "scripts/retire-legacy-installer",
+            "scripts/publish-installer-bootstrap",
             "scripts/publish-release-test",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml",
@@ -122,9 +129,11 @@ final class RepositoryRules {
             "--target-sha \"$CANDIDATE_CONTROLLER_SHA\"",
             "AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}",
             "AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}",
-            "scripts/retire-legacy-installer",
+            "scripts/publish-installer-bootstrap",
             "scripts/publish-channel-metadata",
-            "--expected-current-channel current/channels/zap.json");
+            "--expected-current-channel current/channels/zap.json",
+            "cmp -s scripts/install-bootstrap out/public-installer.sh",
+            "ZOLT_INSTALL_ROOT=\"$install_root\" sh out/public-installer.sh");
     static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
             "scripts/zap-distribution",
             "scripts/publish-zap",
@@ -140,8 +149,11 @@ final class RepositoryRules {
             "gh release download \"$RELEASE_TAG\"",
             ".draft == false and .prerelease == true and .immutable == true",
             "verify-release-file",
+            "scripts/publish-installer-bootstrap",
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json",
+            "cmp -s scripts/install-bootstrap out/public-installer.sh",
+            "ZOLT_INSTALL_ROOT=\"$install_root\" sh out/public-installer.sh",
             "Verify public zap recovery");
     static final List<String> FORBIDDEN_DISPATCHER_FRAGMENTS = List.of(
             "permission-contents: write",

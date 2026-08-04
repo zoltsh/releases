@@ -165,7 +165,8 @@ Rotate the App key if the source workflow or repository is compromised.
 
 All archives, checksums, the exact source-commit installer, manifests, records, and
 evidence are GitHub Release assets in `zoltsh/releases`. Zap uses the existing
-DigitalOcean distribution only for small signed moving metadata:
+DigitalOcean distribution for the stable installer bootstrap and small signed moving
+metadata:
 
 ```text
 Space:    zolt-dist
@@ -176,10 +177,10 @@ Key ID:   zolt-release-2026
 ```
 
 Keep bucket listing private and use a Spaces key restricted to `zolt-dist`. The
-publisher needs object read and write access only for `channels/zap.json`,
-`releases/zap.json`, and their signature sidecars. It also needs permission to delete
-the retired legacy `install.sh` object. It never stores executable or release artifacts
-in Spaces.
+publisher needs object read and write access only for `install.sh`,
+`channels/zap.json`, `releases/zap.json`, and the JSON signature sidecars. The bootstrap
+pins and verifies an immutable GitHub installer; Spaces never stores native archives,
+checksums, manifests, or release records.
 
 Object versioning is optional recovery convenience, not a publication prerequisite.
 Every immutable GitHub Release contains signed snapshots of its channel and release
@@ -234,7 +235,8 @@ Before any public release:
 - [ ] Branch and tag rules are active.
 - [ ] Stable has one reviewer and prevents self-review.
 - [ ] Zap and preview have no reviewers.
-- [ ] `channel-zap` has the existing metadata-only Spaces key and matching Ed25519 private key.
+- [ ] `channel-zap` has the narrow `zolt-dist` Spaces key and matching Ed25519 private key.
 - [ ] No release archive is uploaded to `zolt-dist`.
+- [ ] `https://dist.zolt.sh/install.sh` matches `scripts/install-bootstrap` exactly.
 - [ ] The live zap channel and release index verify with `zolt-release-2026`.
 - [ ] `scripts/check` passes.

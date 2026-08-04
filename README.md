@@ -31,21 +31,14 @@
 ## Install
 
 ```sh
-version='0.1.0-zap.20260804.c72838dc828e'
-release="https://github.com/zoltsh/releases/releases/download/zolt-zap-$version"
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
-  "$release/install.sh" |
-  ZOLT_INSTALL_CHANNEL=zap \
-  ZOLT_INSTALL_VERSION="$version" \
-  ZOLT_INSTALL_CHANNEL_URL="$release/channel-zap.json" \
-  ZOLT_INSTALL_UPDATE_CHANNEL_URL=https://dist.zolt.sh/channels/zap.json \
-  sh
+  https://dist.zolt.sh/install.sh | sh
 ```
 
-The installer, channel snapshot, and requested version are pinned to one immutable
-GitHub Release. The installer verifies the matching archive checksum and records the
-signed moving zap channel for future `zolt self update` calls. This protocol anchor only
-needs to move when the installer contract changes.
+The stable URL serves a reviewed bootstrap that pins an immutable GitHub-hosted
+installer and its SHA-256. That installer resolves the current zap release, accepts
+archives and checksums only from exact `zoltsh/releases` release URLs, verifies the
+archive, and records the signed channel used by `zolt self update`.
 
 ## Choose a channel
 
@@ -70,10 +63,11 @@ needs to move when the installer contract changes.
 | Source CI evidence | The exact successful source run used for the build |
 
 Release files for every channel live in immutable
-[GitHub Releases](https://github.com/zoltsh/releases/releases). DigitalOcean stores only
-the small signed channel and release-index files that tell existing clients which GitHub
-Release is current. Preview and stable publication remain disabled until their build and
-approval workflows are complete; they use the same GitHub asset contract as zap.
+[GitHub Releases](https://github.com/zoltsh/releases/releases). DigitalOcean stores the
+small stable bootstrap plus signed channel and release-index files that tell clients
+which GitHub Release is current. Preview and stable publication remain disabled until
+their build and approval workflows are complete; they use the same GitHub asset
+contract as zap.
 
 ## About this repository
 

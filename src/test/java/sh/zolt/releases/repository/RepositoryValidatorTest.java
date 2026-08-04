@@ -110,19 +110,31 @@ final class RepositoryValidatorTest {
     }
 
     @Test
-    void legacyInstallerRetirementMustOnlyDeleteTheInstaller(@TempDir Path root)
+    void installerBootstrapMustPinAndVerifyImmutableGitHubInstaller(@TempDir Path root)
             throws IOException {
-        Path retirement = root.resolve("scripts/retire-legacy-installer");
-        Files.createDirectories(retirement.getParent());
-        Files.writeString(
-                retirement,
-                "curl --upload-file installer s3://zolt-dist/install.sh\n");
+        Path bootstrap = root.resolve("scripts/install-bootstrap");
+        Files.createDirectories(bootstrap.getParent());
+        Files.writeString(bootstrap, "curl https://dist.zolt.sh/current-install.sh | sh\n");
 
         List<String> errors = new ArrayList<>();
         new RepositoryAutomationCheck().validate(root, errors);
 
         assertTrue(errors.contains(
-                "legacy installer retirement must only delete install.sh and prove authenticated HTTP 404 with bounded curl SigV4 requests"));
+                "stable installer bootstrap must verify and execute a pinned immutable GitHub installer"));
+    }
+
+    @Test
+    void installerBootstrapPublisherMustOnlyWriteReviewedInstaller(@TempDir Path root)
+            throws IOException {
+        Path publisher = root.resolve("scripts/publish-installer-bootstrap");
+        Files.createDirectories(publisher.getParent());
+        Files.writeString(publisher, "aws s3 cp artifacts s3://zolt-dist/install.sh\n");
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "installer bootstrap publisher must upload and verify only the reviewed install.sh with bounded curl SigV4 requests"));
     }
 
     @Test

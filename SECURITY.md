@@ -4,11 +4,12 @@
 [Incident runbooks](./docs/RUNBOOKS.md)
 
 This repository controls what Zolt publishes and what users download. A problem in its
-workflows, policy, signing, or release metadata may be a security issue.
+workflows, installer bootstrap, policy, signing, or release metadata may be a security
+issue.
 
 > [!WARNING]
-> Do not open a public issue for a leaked credential, workflow bypass, replaced release
-> file, or channel rollback or replay problem.
+> Do not open a public issue for a leaked credential, workflow bypass, replaced
+> installer or release file, or channel rollback or replay problem.
 
 ## Report privately
 

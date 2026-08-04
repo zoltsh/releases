@@ -209,12 +209,12 @@ jobs:
               --publication out/publication \
               --target-sha "$CANDIDATE_CONTROLLER_SHA"
 
-      - name: Retire legacy mutable installer before channel metadata
+      - name: Publish stable installer bootstrap
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}
         run: |
-          scripts/retire-legacy-installer --channel zap
+          scripts/publish-installer-bootstrap --channel zap
 
       - name: Move signed zap channel metadata last
         env:
@@ -232,10 +232,10 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
-              installer_status="$(curl --proto '=https' --tlsv1.2 \
-                  --silent --show-error --output /dev/null --write-out '%{http_code}' \
-                  https://dist.zolt.sh/install.sh || true)"
-              if [[ "$installer_status" == 404 ]] \
+              if curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+                      -fsSLo out/public-installer.sh https://dist.zolt.sh/install.sh \
+                  && cmp -s scripts/install-bootstrap out/public-installer.sh \
+                  && sh -n out/public-installer.sh \
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json \
                       https://dist.zolt.sh/channels/zap.json \
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json.sig \
@@ -255,6 +255,11 @@ jobs:
                       --input out/public-index.json \
                       --signature out/public-index.json.sig; then
                   version="$(jq -er '.version' out/public-channel.json)"
+                  install_root="$RUNNER_TEMP/public-bootstrap"
+                  ZOLT_INSTALL_ROOT="$install_root" sh out/public-installer.sh
+                  test "$("$install_root/bin/zolt" --version)" = "$version"
+                  test "$(cat "$install_root/channel-url")" = \
+                      'https://dist.zolt.sh/channels/zap.json'
                   tag="zolt-zap-${version}"
                   gh release view "$tag" \
                       --repo zoltsh/releases \

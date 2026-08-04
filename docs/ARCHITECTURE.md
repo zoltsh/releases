@@ -78,28 +78,28 @@ https://dist.zolt.sh
 The stable and preview workflows are not enabled. Before either is enabled, its build,
 signing, and approval path must be completed and reviewed.
 
-The public installer command names an exact immutable GitHub Release asset. Until
-stable exists, that installer follows `channels/zap.json`. Every release preserves the
-installer extracted from its exact verified source commit; DigitalOcean does not serve
-executable bootstrap code.
+The public installer command uses a stable `dist.zolt.sh` bootstrap. Its reviewed bytes
+pin an exact immutable GitHub Release installer and SHA-256; that immutable installer
+follows `channels/zap.json` until stable exists. Every release also preserves the
+installer extracted from its exact verified source commit.
 
 ## Storage
 
 | Location | Stores |
 | :--- | :--- |
 | GitHub Releases | Native archives, checksums, the source-matched installer, manifests, release records, source evidence, and signed metadata snapshots |
-| `zolt-dist` Space | Current signed channel/release-index metadata only |
+| `zolt-dist` Space | Stable installer bootstrap and current signed channel/release-index metadata |
 
 Every channel publishes one complete immutable GitHub Release. Zap and preview releases
 are prereleases; stable releases are normal releases and may be marked latest. Release
 tags and assets are never reused or replaced. A retry must verify the existing tag,
 asset set, sizes, and SHA-256 digests before accepting it.
 
-The mutable zap files are `channels/zap.json` and `releases/zap.json`; each has an
-Ed25519 `.sig` sidecar. The publisher first makes the GitHub Release immutable, ensures
-the retired `install.sh` object is absent, then writes the release-index pair, the
-channel signature, and `channels/zap.json` last. The archive URLs in the signed channel
-point directly at exact immutable GitHub Release assets.
+The mutable zap files are `install.sh`, `channels/zap.json`, and `releases/zap.json`;
+the two JSON files have Ed25519 `.sig` sidecars. The publisher first makes the GitHub
+Release immutable, publishes and reads back the reviewed bootstrap, then writes the
+release-index pair, channel signature, and `channels/zap.json` last. The archive URLs
+in the signed channel point directly at exact immutable GitHub Release assets.
 
 DigitalOcean object versioning is optional. Each GitHub Release contains immutable
 copies of the signed channel and index produced for that publication, so operators can
@@ -331,31 +331,26 @@ silently if the existing private key is lost.
 
 ## Installation trust
 
-The public command pins the installer code to one immutable release snapshot:
+The convenient public command is stable:
 
 ```sh
-version='0.1.0-zap.20260804.c72838dc828e'
-release="https://github.com/zoltsh/releases/releases/download/zolt-zap-$version"
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
-  "$release/install.sh" |
-  ZOLT_INSTALL_CHANNEL=zap \
-  ZOLT_INSTALL_VERSION="$version" \
-  ZOLT_INSTALL_CHANNEL_URL="$release/channel-zap.json" \
-  ZOLT_INSTALL_UPDATE_CHANNEL_URL=https://dist.zolt.sh/channels/zap.json \
-  sh
+  https://dist.zolt.sh/install.sh | sh
 ```
 
-The shell installer reads the channel snapshot from that same immutable release and
-requires the named version, channel, target, filenames, archive URL, and checksum URL
-before verifying SHA-256. It records the canonical moving channel only for later
-self-updates. A compromise of that metadata origin without the signing key can deny an
-update but cannot authorize executable bytes: native Zolt clients verify the channel's
-Ed25519 sidecar with a bundled public key.
+The Spaces object is executable bootstrap code and is therefore part of the convenience
+path's trust boundary. Its repository-controlled contents pin one immutable GitHub
+installer URL and SHA-256, verify those bytes, and execute them. The delegated installer
+then requires the channel, version, target, filenames, archive URL, and checksum URL to
+match an exact `zoltsh/releases` GitHub Release before verifying the native archive.
+A compromise limited to the moving JSON metadata can cause denial or rollback but
+cannot name an executable outside that repository. Native self-update clients
+additionally verify the channel's Ed25519 sidecar with a bundled public key.
 
-For reproducible automation, pin `install.sh`, `channel-zap.json`, the requested
-version, archives, and checksums from one immutable GitHub Release. The primary README
-command is updated to that complete snapshot after each installer protocol change; it
-does not execute a mutable object-storage file.
+For reproducible or higher-assurance automation, bypass the stable bootstrap and pin
+`install.sh`, `channel-zap.json`, the requested version, archives, and checksums from one
+immutable GitHub Release. The stable bootstrap's GitHub URL and checksum change only
+when its installer protocol anchor must change, not for each Zolt release.
 
 ## Release flows
 
