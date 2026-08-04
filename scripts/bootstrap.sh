@@ -40,20 +40,33 @@ configure_environment_ref() {
         gh api --method DELETE "${endpoint}/deployment-branch-policies/${policy_id}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2026-03-10" >/dev/null
-    done < <(jq -r '.branch_policies[].id' <<<"$policies")
+    done < <(jq -r \
+        --arg name "$ref_pattern" \
+        --arg type "$ref_type" \
+        '.branch_policies[] | select(.name != $name or .type != $type) | .id' \
+        <<<"$policies")
 
-    gh api --method POST "${endpoint}/deployment-branch-policies" \
-        -H "Accept: application/vnd.github+json" \
-        -H "X-GitHub-Api-Version: 2026-03-10" \
-        -f name="$ref_pattern" \
-        -f type="$ref_type" >/dev/null
+    if ! jq -e \
+        --arg name "$ref_pattern" \
+        --arg type "$ref_type" \
+        'any(.branch_policies[]; .name == $name and .type == $type)' \
+        <<<"$policies" >/dev/null; then
+        gh api --method POST "${endpoint}/deployment-branch-policies" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            -f name="$ref_pattern" \
+            -f type="$ref_type" >/dev/null
+    fi
 
     policies="$(gh api "${endpoint}/deployment-branch-policies?per_page=100" \
         -H "Accept: application/vnd.github+json" \
         -H "X-GitHub-Api-Version: 2026-03-10")"
     jq -e \
         --arg name "$ref_pattern" \
-        '.total_count == 1 and .branch_policies[0].name == $name' \
+        --arg type "$ref_type" \
+        '.total_count == 1 and
+         .branch_policies[0].name == $name and
+         .branch_policies[0].type == $type' \
         <<<"$policies" >/dev/null \
         || fail "${environment} must allow only ${ref_type} ${ref_pattern}"
 }

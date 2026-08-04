@@ -119,6 +119,7 @@ final class RepositoryRules {
             "deployment_branch_policy[custom_branch_policies]=true",
             "deployment-branch-policies?per_page=100",
             "-f type=\"$ref_type\"",
+            ".branch_policies[0].type == $type",
             "configure_environment_ref channel-zap branch main",
             "configure_environment_ref channel-preview tag 'zolt-preview-*'",
             "configure_environment_ref channel-stable tag 'zolt-v*'");
