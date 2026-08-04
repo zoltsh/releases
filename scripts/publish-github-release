@@ -61,21 +61,21 @@ done
 
 case "$channel" in
     zap)
-        version_pattern='^[0-9]+\.[0-9]+\.[0-9]+-zap\.[0-9]{8}\.[0-9a-f]{12}$'
+        version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-zap\.[0-9]{8}\.[0-9a-f]{12}$'
         tag_prefix="zolt-zap-"
         expected_key_id="zolt-release-2026"
         prerelease="true"
         latest="false"
         ;;
     preview)
-        version_pattern='^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$'
+        version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|beta|rc)\.(0|[1-9][0-9]*)$'
         tag_prefix="zolt-preview-v"
         expected_key_id="zolt-preview-2026"
         prerelease="true"
         latest="false"
         ;;
     stable)
-        version_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+        version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
         tag_prefix="zolt-v"
         expected_key_id="zolt-stable-2026"
         prerelease="false"
@@ -172,6 +172,20 @@ if ! jq -e --arg origin "$asset_origin/" '
         (.checksumUrl == ($origin + .archive + ".sha256")))
 ' "$channel_json" >/dev/null; then
     printf 'error: staged channel does not point exactly at GitHub Release %s\n' "$tag" >&2
+    exit 1
+fi
+if ! jq -e \
+    --arg base "https://github.com/${repository}/releases/download/" \
+    --arg tag_prefix "$tag_prefix" \
+    --arg version_pattern "$version_pattern" '
+    all(.versions[];
+        . as $release
+        | ($base + $tag_prefix + $release.version + "/") as $origin
+        | ($release.version | test($version_pattern)) and all($release.artifacts[];
+            (.archiveUrl == ($origin + .archive)) and
+            (.checksumUrl == ($origin + .archive + ".sha256"))))
+' "$index_json" >/dev/null; then
+    printf 'error: staged release index contains an artifact outside its immutable GitHub Release\n' >&2
     exit 1
 fi
 for sidecar in "$channel_signature" "$index_signature"; do

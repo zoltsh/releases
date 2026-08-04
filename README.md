@@ -31,11 +31,13 @@
 ## Install
 
 ```sh
-curl -fsSL https://dist.zolt.sh/install.sh | sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
+  https://github.com/zoltsh/releases/releases/download/zolt-zap-0.1.0-zap.20260804.89fc63944134/install.sh \
+  | sh
 ```
 
-Until the first stable release exists, the installer follows the automatic zap
-channel. Production automation should use an exact version and checksum.
+The installer entrypoint is pinned to an immutable GitHub Release and follows the
+automatic zap channel. Production automation should pin the complete release snapshot.
 
 ## Choose a channel
 

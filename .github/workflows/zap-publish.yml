@@ -209,14 +209,12 @@ jobs:
               --publication out/publication \
               --target-sha "$CANDIDATE_CONTROLLER_SHA"
 
-      - name: Publish source-matched installer before channel metadata
+      - name: Retire legacy mutable installer before channel metadata
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}
         run: |
-          scripts/publish-installer \
-              --channel zap \
-              --publication out/publication
+          scripts/retire-legacy-installer --channel zap
 
       - name: Move signed zap channel metadata last
         env:
@@ -234,10 +232,12 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
-              if curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json \
+              installer_status="$(curl --proto '=https' --tlsv1.2 \
+                  --silent --show-error --output /dev/null --write-out '%{http_code}' \
+                  https://dist.zolt.sh/install.sh || true)"
+              if [[ "$installer_status" == 404 ]] \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json \
                       https://dist.zolt.sh/channels/zap.json \
-                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-installer.sh \
-                      https://dist.zolt.sh/install.sh \
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json.sig \
                       https://dist.zolt.sh/channels/zap.json.sig \
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json \
@@ -245,9 +245,6 @@ jobs:
                   && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json.sig \
                       https://dist.zolt.sh/releases/zap.json.sig \
                   && cmp -s out/publication/channels/zap.json out/public-channel.json \
-                  && cmp -s \
-                      "out/publication/artifacts/zap/$(jq -er '.version' out/public-channel.json)/install.sh" \
-                      out/public-installer.sh \
                   && cmp -s out/publication/channels/zap.json.sig out/public-channel.json.sig \
                   && cmp -s out/publication/releases/zap.json out/public-index.json \
                   && cmp -s out/publication/releases/zap.json.sig out/public-index.json.sig \

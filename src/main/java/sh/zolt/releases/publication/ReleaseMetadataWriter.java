@@ -16,6 +16,9 @@ import sh.zolt.releases.io.JsonSupport;
 
 final class ReleaseMetadataWriter {
     private static final int RELEASE_INDEX_LIMIT = 200;
+    private static final String ZAP_VERSION =
+            "(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)"
+                    + "-zap\\.[0-9]{8}\\.[0-9a-f]{12}";
     private final PublicationSchemaValidator schemaValidator;
 
     ReleaseMetadataWriter() {
@@ -33,8 +36,6 @@ final class ReleaseMetadataWriter {
             Path output) {
         JsonNode previousChannel = readPrevious(previousChannelPath, "current zap channel");
         JsonNode previousIndex = readPrevious(previousIndexPath, "current zap release index");
-        schemaValidator.validateChannel(previousChannel);
-        schemaValidator.validateIndex(previousIndex);
         validatePrevious(previousChannel, previousIndex);
         validateProgression(release, previousChannel);
 
@@ -126,7 +127,8 @@ final class ReleaseMetadataWriter {
             if (versions.size() >= RELEASE_INDEX_LIMIT) {
                 break;
             }
-            if (!release.version().equals(previous.path("version").asText())) {
+            if (!release.version().equals(previous.path("version").asText())
+                    && usesImmutableGitHubAssets(previous)) {
                 versions.add(previous.deepCopy());
             }
         }
@@ -166,6 +168,7 @@ final class ReleaseMetadataWriter {
         Set<String> seen = new HashSet<>();
         for (JsonNode version : versions) {
             validateVersion(version, "zap release index version");
+            validateArtifactLocations(version, true);
             if (!seen.add(version.path("version").asText())) {
                 throw new IllegalArgumentException("zap release index repeats a version");
             }
@@ -180,21 +183,44 @@ final class ReleaseMetadataWriter {
         requireInt(channel, "schemaVersion", 1, "zap channel");
         requireText(channel, "channel", ReleaseConstants.ZAP_CHANNEL, "zap channel");
         validateVersion(channel, "zap channel");
-        for (JsonNode artifact : channel.path("artifacts")) {
-            String version = channel.path("version").asText();
-            String githubPrefix = ReleaseConstants.RELEASE_ASSET_ORIGIN
-                    + "/"
-                    + releaseTag(version)
-                    + "/";
-            String legacyPrefix = "https://dist.zolt.sh/artifacts/zap/" + version + "/";
+        validateArtifactLocations(channel, true);
+    }
+
+    private static void validateArtifactLocations(JsonNode versionNode, boolean allowLegacy) {
+        String version = versionNode.path("version").asText();
+        String githubPrefix = ReleaseConstants.RELEASE_ASSET_ORIGIN
+                + "/"
+                + releaseTag(version)
+                + "/";
+        String legacyPrefix = "https://dist.zolt.sh/artifacts/zap/" + version + "/";
+        for (JsonNode artifact : versionNode.path("artifacts")) {
+            String target = artifact.path("target").asText();
+            String archive = artifact.path("archive").asText();
+            String expectedArchive = "zolt-" + version + "-" + target + ".tar.gz";
+            if (!archive.equals(expectedArchive)) {
+                throw new IllegalArgumentException(
+                        "current zap metadata archive does not match its version and target");
+            }
             String archiveUrl = artifact.path("archiveUrl").asText();
             String checksumUrl = artifact.path("checksumUrl").asText();
-            if (!(archiveUrl.startsWith(githubPrefix) && checksumUrl.startsWith(githubPrefix))
-                    && !(archiveUrl.startsWith(legacyPrefix)
-                            && checksumUrl.startsWith(legacyPrefix))) {
+            boolean github = archiveUrl.equals(githubPrefix + archive)
+                    && checksumUrl.equals(githubPrefix + archive + ".sha256");
+            boolean legacy = allowLegacy
+                    && archiveUrl.equals(legacyPrefix + archive)
+                    && checksumUrl.equals(legacyPrefix + archive + ".sha256");
+            if (!github && !legacy) {
                 throw new IllegalArgumentException(
-                        "current zap channel contains an artifact outside its release location");
+                        "current zap metadata contains an artifact outside its exact release location");
             }
+        }
+    }
+
+    private static boolean usesImmutableGitHubAssets(JsonNode versionNode) {
+        try {
+            validateArtifactLocations(versionNode, false);
+            return true;
+        } catch (IllegalArgumentException exception) {
+            return false;
         }
     }
 
@@ -203,7 +229,10 @@ final class ReleaseMetadataWriter {
     }
 
     private static void validateVersion(JsonNode version, String description) {
-        text(version, "version", description);
+        String releaseVersion = text(version, "version", description);
+        if (!releaseVersion.matches(ZAP_VERSION)) {
+            throw new IllegalArgumentException(description + " has an invalid zap version");
+        }
         String commit = text(version, "commit", description);
         if (!commit.matches("[0-9a-f]{40}")) {
             throw new IllegalArgumentException(description + " has an invalid commit");
@@ -300,6 +329,9 @@ final class ReleaseMetadataWriter {
     }
 
     private static void instant(String value, String description) {
+        if (!value.endsWith("Z")) {
+            throw new IllegalArgumentException(description + " is not a UTC instant ending in Z");
+        }
         try {
             Instant.parse(value);
         } catch (DateTimeParseException exception) {

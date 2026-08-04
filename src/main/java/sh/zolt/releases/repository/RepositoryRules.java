@@ -12,9 +12,8 @@ final class RepositoryRules {
     static final Pattern TOP_LEVEL_PERMISSIONS =
             Pattern.compile("^permissions:\\s*(?:\\{\\}|$)", Pattern.MULTILINE);
     static final Pattern PINNED_ZOLT_ARCHIVE = Pattern.compile(
-            "ZOLT_ARCHIVE_URL:\\s*https://(?:dist\\.zolt\\.sh/artifacts/zap/[^/\\s]+"
-                    + "|github\\.com/zoltsh/releases/releases/download/zolt-zap-[^/\\s]+)"
-                    + "/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
+            "ZOLT_ARCHIVE_URL:\\s*https://github\\.com/zoltsh/releases/releases/download/"
+                    + "zolt-zap-[^/\\s]+/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
     static final Pattern PINNED_ZOLT_CHECKSUM =
             Pattern.compile("ZOLT_ARCHIVE_SHA256:\\s*[0-9a-f]{64}");
     static final Pattern OTHER_TOOLCHAIN = Pattern.compile(
@@ -57,7 +56,7 @@ final class RepositoryRules {
             "scripts/check",
             "scripts/publish-channel-metadata",
             "scripts/publish-github-release",
-            "scripts/publish-installer",
+            "scripts/retire-legacy-installer",
             "scripts/publish-release-test",
             "source-integration/CODEOWNERS",
             "source-integration/dispatch-zap.yml",
@@ -123,7 +122,7 @@ final class RepositoryRules {
             "--target-sha \"$CANDIDATE_CONTROLLER_SHA\"",
             "AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}",
             "AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}",
-            "scripts/publish-installer",
+            "scripts/retire-legacy-installer",
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json");
     static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(

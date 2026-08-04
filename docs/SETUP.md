@@ -165,8 +165,7 @@ Rotate the App key if the source workflow or repository is compromised.
 
 All archives, checksums, the exact source-commit installer, manifests, records, and
 evidence are GitHub Release assets in `zoltsh/releases`. Zap uses the existing
-DigitalOcean distribution only for the public installer and its small signed moving
-metadata:
+DigitalOcean distribution only for small signed moving metadata:
 
 ```text
 Space:    zolt-dist
@@ -177,9 +176,10 @@ Key ID:   zolt-release-2026
 ```
 
 Keep bucket listing private and use a Spaces key restricted to `zolt-dist`. The
-publisher needs object read and write access only for `install.sh`,
-`channels/zap.json`, `releases/zap.json`, and their signature sidecars. It never stores
-release archives in Spaces.
+publisher needs object read and write access only for `channels/zap.json`,
+`releases/zap.json`, and their signature sidecars. It also needs permission to delete
+the retired legacy `install.sh` object. It never stores executable or release artifacts
+in Spaces.
 
 Object versioning is optional recovery convenience, not a publication prerequisite.
 Every immutable GitHub Release contains signed snapshots of its channel and release

@@ -33,9 +33,21 @@ if [[ -z "$channel" || -z "$publication" || -z "$expected_current_channel" ]]; t
     exit 2
 fi
 case "$channel" in
-    zap) expected_key_id="zolt-release-2026" ;;
-    preview) expected_key_id="zolt-preview-2026" ;;
-    stable) expected_key_id="zolt-stable-2026" ;;
+    zap)
+        expected_key_id="zolt-release-2026"
+        tag_prefix="zolt-zap-"
+        version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-zap\.[0-9]{8}\.[0-9a-f]{12}$'
+        ;;
+    preview)
+        expected_key_id="zolt-preview-2026"
+        tag_prefix="zolt-preview-v"
+        version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|beta|rc)\.(0|[1-9][0-9]*)$'
+        ;;
+    stable)
+        expected_key_id="zolt-stable-2026"
+        tag_prefix="zolt-v"
+        version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+        ;;
     *)
         printf 'error: unsupported release channel: %s\n' "$channel" >&2
         exit 2
@@ -79,6 +91,20 @@ if [[ "$(jq -er '.channel' "$channel_json")" != "$channel" \
     || "$(jq -er '.channel' "$index_json")" != "$channel" \
     || "$(jq -er '.versions[0].version' "$index_json")" != "$(jq -er '.version' "$channel_json")" ]]; then
     printf 'error: signed moving metadata does not match channel %s\n' "$channel" >&2
+    exit 1
+fi
+if ! jq -e \
+    --arg base "https://github.com/zoltsh/releases/releases/download/" \
+    --arg tag_prefix "$tag_prefix" \
+    --arg version_pattern "$version_pattern" '
+    all(.versions[];
+        . as $release
+        | ($base + $tag_prefix + $release.version + "/") as $origin
+        | ($release.version | test($version_pattern)) and all($release.artifacts[];
+            (.archiveUrl == ($origin + .archive)) and
+            (.checksumUrl == ($origin + .archive + ".sha256"))))
+' "$index_json" >/dev/null; then
+    printf 'error: signed moving metadata contains a non-GitHub release artifact\n' >&2
     exit 1
 fi
 for sidecar in "$channel_signature" "$index_signature"; do

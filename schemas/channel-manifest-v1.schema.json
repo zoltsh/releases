@@ -44,6 +44,20 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "channel": { "const": "stable" } } },
+      "then": { "properties": { "version": { "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$" } } }
+    },
+    {
+      "if": { "properties": { "channel": { "const": "preview" } } },
+      "then": { "properties": { "version": { "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)-(?:alpha|beta|rc)\\.(?:0|[1-9][0-9]*)$" } } }
+    },
+    {
+      "if": { "properties": { "channel": { "const": "zap" } } },
+      "then": { "properties": { "version": { "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)-zap\\.[0-9]{8}\\.[0-9a-f]{12}$" } } }
+    }
+  ],
   "$defs": {
     "artifact": {
       "type": "object",
@@ -73,12 +87,12 @@
         "archiveUrl": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://(?:github\\.com/zoltsh/releases/releases/download/zolt-(?:zap-|preview-v|v)[^/]+/|dist\\.zolt\\.sh/artifacts/zap/)"
+          "pattern": "^https://github\\.com/zoltsh/releases/releases/download/zolt-(?:zap-|preview-v|v)[^/]+/"
         },
         "checksumUrl": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://(?:github\\.com/zoltsh/releases/releases/download/zolt-(?:zap-|preview-v|v)[^/]+/|dist\\.zolt\\.sh/artifacts/zap/).+\\.sha256$"
+          "pattern": "^https://github\\.com/zoltsh/releases/releases/download/zolt-(?:zap-|preview-v|v)[^/]+/.+\\.sha256$"
         },
         "sha256": {
           "type": "string",

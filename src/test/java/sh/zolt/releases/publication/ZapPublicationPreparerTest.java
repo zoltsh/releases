@@ -83,6 +83,12 @@ final class ZapPublicationPreparerTest {
         assertTrue(archiveUrl.startsWith(
                 "https://github.com/zoltsh/releases/releases/download/zolt-zap-" + VERSION + "/"));
         assertEquals(
+                1,
+                JsonSupport.read(first.resolve("releases/zap.json"))
+                        .path("versions")
+                        .size(),
+                "legacy Spaces-backed index entries must be pruned");
+        assertEquals(
                 SOURCE_SHA,
                 JsonSupport.read(first.resolve("artifacts/zap")
                                 .resolve(VERSION)

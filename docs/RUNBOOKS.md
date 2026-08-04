@@ -29,8 +29,8 @@ Use these procedures when a release fails or release authority may be compromise
 1. Do not change the zap channel if the build, checks, revalidation, signing, or upload
    fails.
 2. Leave the previous zap release current.
-3. If installer publication fails, leave the previous channel current. The publisher
-   can safely retry the source-matched installer before moving metadata.
+3. If legacy installer retirement fails, leave the previous channel current and fix
+   the Spaces delete permission before retrying.
 4. If the immutable GitHub Release exists but the channel did not change, rerun the same
    publisher. It verifies and reuses the exact release before retrying metadata.
    If the original publisher cannot reach Spaces, dispatch `recover zap metadata` with

@@ -233,8 +233,9 @@ make_publication() {
     } >"$publication/channels/$channel.json"
     printf 'version: zolt-ed25519-v1\nkeyId: %s\nsignature: test\n' "$key_id" \
         >"$publication/channels/$channel.json.sig"
-    printf '{"channel":"%s","versions":[{"version":"%s"}]}\n' "$channel" "$version" \
-        >"$publication/releases/$channel.json"
+    jq --arg version "$version" '
+        {channel: .channel, versions: [{version: $version, artifacts: .artifacts}]}
+    ' "$publication/channels/$channel.json" >"$publication/releases/$channel.json"
     printf 'version: zolt-ed25519-v1\nkeyId: %s\nsignature: test\n' "$key_id" \
         >"$publication/releases/$channel.json.sig"
     printf '%s\n' "$publication"
@@ -335,6 +336,7 @@ method="GET"
 output=""
 upload=""
 url=""
+write_out=""
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --proto | --connect-timeout | --max-time | --aws-sigv4 | --user | --header)
@@ -355,6 +357,10 @@ while [[ "$#" -gt 0 ]]; do
             output="$2"
             shift 2
             ;;
+        --write-out)
+            write_out="$2"
+            shift 2
+            ;;
         https://*)
             url="$1"
             shift
@@ -369,8 +375,24 @@ key="${relative#zolt-dist/}"
 path="$ZOLT_FAKE_SPACES_ROOT/$relative"
 case "$method" in
     GET)
-        [[ -f "$path" ]]
-        cp "$path" "$output"
+        if [[ -n "${ZOLT_FAKE_SPACES_GET_STATUS:-}" ]]; then
+            status="$ZOLT_FAKE_SPACES_GET_STATUS"
+            : >"$output"
+        elif [[ -f "$path" ]]; then
+            cp "$path" "$output"
+            status=200
+        else
+            : >"$output"
+            status=404
+        fi
+        if [[ -n "$write_out" ]]; then
+            printf '%s' "$status"
+        fi
+        [[ "$status" -lt 400 ]]
+        ;;
+    DELETE)
+        rm -f "$path"
+        printf '%s\n' "$key" >>"$ZOLT_FAKE_SPACES_LOG"
         ;;
     PUT)
         mkdir -p "$(dirname "$path")"
@@ -384,21 +406,29 @@ chmod +x "$fake_curl"
 previous="$temporary/previous-channel.json"
 printf '{"version":"previous"}\n' >"$previous"
 cp "$previous" "$spaces_store/zolt-dist/channels/zap.json"
+printf 'legacy mutable installer\n' >"$spaces_store/zolt-dist/install.sh"
 export ZOLT_FAKE_SPACES_ROOT="$spaces_store"
 export ZOLT_FAKE_SPACES_LOG="$spaces_log"
 export ZOLT_PUBLISH_CURL="$fake_curl"
 export AWS_ACCESS_KEY_ID="test-access-key"
 printf -v AWS_SECRET_ACCESS_KEY '%s' "test-secret-key"
 export AWS_SECRET_ACCESS_KEY
-scripts/publish-installer \
-    --channel zap \
-    --publication "$zap_publication"
-cmp "$zap_publication/artifacts/zap/$zap_version/install.sh" \
-    "$spaces_store/zolt-dist/install.sh"
-if [[ "$(head -n 1 "$spaces_log")" != "install.sh" ]]; then
-    printf 'error: installer publisher did not write only the fixed install.sh object\n' >&2
+scripts/retire-legacy-installer --channel zap
+if [[ -e "$spaces_store/zolt-dist/install.sh" ]]; then
+    printf 'error: legacy mutable installer was not deleted\n' >&2
     exit 1
 fi
+if [[ "$(head -n 1 "$spaces_log")" != "install.sh" ]]; then
+    printf 'error: installer retirement did not delete only install.sh\n' >&2
+    exit 1
+fi
+export ZOLT_FAKE_SPACES_GET_STATUS=500
+if scripts/retire-legacy-installer --channel zap >"$temporary/retirement-status.log" 2>&1; then
+    printf 'error: installer retirement accepted an ambiguous verification failure\n' >&2
+    exit 1
+fi
+unset ZOLT_FAKE_SPACES_GET_STATUS
+grep -F 'authenticated GET returned HTTP 500' "$temporary/retirement-status.log" >/dev/null
 scripts/publish-channel-metadata \
     --channel zap \
     --publication "$zap_publication" \

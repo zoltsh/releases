@@ -96,8 +96,20 @@ jobs:
           expected_prefix="https://github.com/zoltsh/releases/releases/download/$RELEASE_TAG/"
           jq -e \
               --arg prefix "$expected_prefix" \
-              '.artifacts | length == 4 and all(.[]; (.archiveUrl | startswith($prefix)) and (.checksumUrl | startswith($prefix)))' \
+              '.artifacts | length == 4 and all(.[];
+                  .archiveUrl == ($prefix + .archive) and
+                  .checksumUrl == ($prefix + .archive + ".sha256"))' \
               out/publication/channels/zap.json >/dev/null
+          jq -e \
+              --arg base "https://github.com/zoltsh/releases/releases/download/zolt-zap-" '
+              all(.versions[];
+                  . as $release
+                  | ($base + $release.version + "/") as $origin
+                  | ($release.version | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)-zap\\.[0-9]{8}\\.[0-9a-f]{12}$")) and
+                    all($release.artifacts[];
+                      .archiveUrl == ($origin + .archive) and
+                      .checksumUrl == ($origin + .archive + ".sha256")))' \
+              out/publication/releases/zap.json >/dev/null
 
       - name: Move recovered signed zap metadata last
         env:

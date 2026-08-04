@@ -110,16 +110,19 @@ final class RepositoryValidatorTest {
     }
 
     @Test
-    void installerPublisherMustWriteOnlyTheInstaller(@TempDir Path root) throws IOException {
-        Path publisher = root.resolve("scripts/publish-installer");
-        Files.createDirectories(publisher.getParent());
-        Files.writeString(publisher, "aws s3 cp artifacts/zap s3://zolt-dist/install.sh\n");
+    void legacyInstallerRetirementMustOnlyDeleteTheInstaller(@TempDir Path root)
+            throws IOException {
+        Path retirement = root.resolve("scripts/retire-legacy-installer");
+        Files.createDirectories(retirement.getParent());
+        Files.writeString(
+                retirement,
+                "curl --upload-file installer s3://zolt-dist/install.sh\n");
 
         List<String> errors = new ArrayList<>();
         new RepositoryAutomationCheck().validate(root, errors);
 
         assertTrue(errors.contains(
-                "installer publisher must write only install.sh with bounded curl SigV4 requests"));
+                "legacy installer retirement must only delete install.sh and prove authenticated HTTP 404 with bounded curl SigV4 requests"));
     }
 
     @Test
