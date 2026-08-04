@@ -10,6 +10,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
     @Override
     public void validate(Path root, List<String> errors) {
         validateActionPins(root, errors);
+        validateZoltSetup(root, errors);
         validateWorkflowPermissions(root, errors);
         validateTrustedControllerResolution(root, errors);
         validateCandidateToolchainSync(root, errors);
@@ -17,6 +18,24 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validatePublishWorkflow(root, errors);
         validateRecoveryWorkflow(root, errors);
         validatePublicationBackends(root, errors);
+    }
+
+    private static void validateZoltSetup(Path root, List<String> errors) {
+        Path path = root.resolve(RepositoryRules.ZOLT_SETUP_ACTION_FILE);
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String setup = RepositoryFiles.read(path);
+        if (RepositoryRules.SETUP_ZOLT_REFERENCE.matcher(setup).results().count() != 1
+                || RepositoryRules.PINNED_ZOLT_SETUP_STEP.matcher(setup).results().count() != 1
+                || RepositoryRules.HANDWRITTEN_ZOLT_SETUP.matcher(setup).find()) {
+            errors.add(
+                    "Zolt setup must use one full-SHA setup-zolt action with channel zap, an exact version, and SHA-256");
+        }
+        if (RepositoryRules.PINNED_JAVA_SETUP_STEP.matcher(setup).results().count() != 1) {
+            errors.add(
+                    "Zolt setup must use one full-SHA setup-java action with Temurin Java 21");
+        }
     }
 
     private static void validateActionPins(Path root, List<String> errors) {
@@ -111,13 +130,6 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         }
         if (workflow.contains("environment: channel-")) {
             errors.add("zap candidate workflow must not use a publishing environment");
-        }
-
-        String setup =
-                RepositoryFiles.read(root.resolve(".github/actions/setup-zolt/action.yml"));
-        if (!RepositoryRules.PINNED_ZOLT_ARCHIVE.matcher(setup).find()
-                || !RepositoryRules.PINNED_ZOLT_CHECKSUM.matcher(setup).find()) {
-            errors.add("Zolt setup must pin an exact native archive and SHA-256");
         }
 
         String dispatcher =

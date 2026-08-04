@@ -83,17 +83,16 @@ At the organization and repository levels:
 
 - keep the default `GITHUB_TOKEN` read-only
 - prevent Actions from approving pull requests
-- allow GitHub-owned actions, `graalvm/setup-graalvm`, and reviewed reusable workflows
+- allow GitHub-owned actions, `graalvm/setup-graalvm`, `zoltsh/setup-zolt`, and
+  reviewed reusable workflows
 - pin every external action to a full commit SHA
 - do not use self-hosted runners for jobs with publication credentials
 
 The repository test suite rejects unpinned actions.
 
-The local `setup-zolt` action pins the exact native Zolt archive and its SHA-256.
-Review both values like a dependency update. They must not come from workflow input
-or the candidate commit. Its current pin is the final legacy `dist.zolt.sh` bootstrap
-archive. After the first GitHub-hosted zap is public, update the pin to that immutable
-GitHub Release in a separate reviewed change.
+The local `setup-zolt` action pins the installer action by full commit SHA, then pins
+an exact Zolt version and SHA-256. Review all three values like a dependency update.
+They must not come from workflow input or the candidate commit.
 
 ## 5. Configure environments
 

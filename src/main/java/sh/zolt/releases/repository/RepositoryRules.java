@@ -11,11 +11,24 @@ final class RepositoryRules {
             Pattern.compile("^\\s*-?\\s*uses:\\s*['\"]?([^'\"\\s#]+)", Pattern.MULTILINE);
     static final Pattern TOP_LEVEL_PERMISSIONS =
             Pattern.compile("^permissions:\\s*(?:\\{\\}|$)", Pattern.MULTILINE);
-    static final Pattern PINNED_ZOLT_ARCHIVE = Pattern.compile(
-            "ZOLT_ARCHIVE_URL:\\s*https://github\\.com/zoltsh/releases/releases/download/"
-                    + "zolt-zap-[^/\\s]+/zolt-[^/\\s]+-linux-x64\\.tar\\.gz");
-    static final Pattern PINNED_ZOLT_CHECKSUM =
-            Pattern.compile("ZOLT_ARCHIVE_SHA256:\\s*[0-9a-f]{64}");
+    static final Pattern SETUP_ZOLT_REFERENCE = Pattern.compile(
+            "(?m)^[ \\t]+uses:[ \\t]+zoltsh/setup-zolt@");
+    static final Pattern PINNED_ZOLT_SETUP_STEP = Pattern.compile(
+            "(?m)^[ \\t]+- name: Install pinned Zolt\\R"
+                    + "[ \\t]+uses:[ \\t]+zoltsh/setup-zolt@[0-9a-f]{40}(?:[ \\t]+#[^\\r\\n]+)?\\R"
+                    + "[ \\t]+with:\\R"
+                    + "[ \\t]+channel:[ \\t]+zap\\R"
+                    + "[ \\t]+version:[ \\t]+(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)"
+                    + "-zap\\.[0-9]{8}\\.[0-9a-f]{12}\\R"
+                    + "[ \\t]+sha256:[ \\t]+[0-9a-f]{64}[ \\t]*$");
+    static final Pattern PINNED_JAVA_SETUP_STEP = Pattern.compile(
+            "(?m)^[ \\t]+- name: Set up Java\\R"
+                    + "[ \\t]+uses:[ \\t]+actions/setup-java@[0-9a-f]{40}(?:[ \\t]+#[^\\r\\n]+)?\\R"
+                    + "[ \\t]+with:\\R"
+                    + "[ \\t]+distribution:[ \\t]+temurin\\R"
+                    + "[ \\t]+java-version:[ \\t]+['\"]?21['\"]?[ \\t]*$");
+    static final Pattern HANDWRITTEN_ZOLT_SETUP = Pattern.compile(
+            "(?m)^[ \\t]+(?:run|shell):|ZOLT_ARCHIVE_(?:URL|SHA256)");
     static final Pattern PINNED_BOOTSTRAP_INSTALLER_URL = Pattern.compile(
             "BOOTSTRAP_INSTALLER_URL='https://github\\.com/zoltsh/releases/releases/download/"
                     + "zolt-zap-(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
@@ -87,6 +100,7 @@ final class RepositoryRules {
     static final String ZAP_CANDIDATE_WORKFLOW = ".github/workflows/zap-candidate.yml";
     static final String ZAP_PUBLISH_WORKFLOW = ".github/workflows/zap-publish.yml";
     static final String ZAP_RECOVER_WORKFLOW = ".github/workflows/zap-recover.yml";
+    static final String ZOLT_SETUP_ACTION_FILE = ".github/actions/setup-zolt/action.yml";
     static final String TRUSTED_ZOLT_SETUP = "uses: ./.github/actions/setup-zolt";
     static final String LOCKED_ZOLT_RESOLVE =
             "zolt resolve --locked --quiet --no-progress --color never";

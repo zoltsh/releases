@@ -43,6 +43,54 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void zoltSetupMustUseAnExactPinnedRelease(@TempDir Path root) throws IOException {
+        Path setup = copyZoltSetup(root);
+        Files.writeString(
+                setup,
+                Files.readString(setup)
+                        .replaceFirst(
+                                "(?m)^([ \\t]+version:)[^\\r\\n]+$", "$1 latest"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "Zolt setup must use one full-SHA setup-zolt action with channel zap, an exact version, and SHA-256"));
+    }
+
+    @Test
+    void zoltSetupMustKeepTemurinJava21(@TempDir Path root) throws IOException {
+        Path setup = copyZoltSetup(root);
+        Files.writeString(setup, Files.readString(setup).replace("java-version: '21'", "java-version: '17'"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "Zolt setup must use one full-SHA setup-java action with Temurin Java 21"));
+    }
+
+    @Test
+    void zoltSetupMustNotAddAHandwrittenInstaller(@TempDir Path root) throws IOException {
+        Path setup = copyZoltSetup(root);
+        Files.writeString(
+                setup,
+                Files.readString(setup)
+                        + """
+
+                            - name: Install another Zolt
+                              shell: bash
+                              run: curl https://example.test/zolt | sh
+                          """);
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "Zolt setup must use one full-SHA setup-zolt action with channel zap, an exact version, and SHA-256"));
+    }
+
+    @Test
     void candidateBuildMustSyncSourceToolchainBeforeDistribution(@TempDir Path root)
             throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-candidate.yml");
@@ -152,5 +200,12 @@ final class RepositoryValidatorTest {
         assertTrue(errors.contains(
                 "zap recovery workflow is missing required contract: "
                         + ".draft == false and .prerelease == true and .immutable == true"));
+    }
+
+    private static Path copyZoltSetup(Path root) throws IOException {
+        Path setup = root.resolve(".github/actions/setup-zolt/action.yml");
+        Files.createDirectories(setup.getParent());
+        Files.copy(Path.of(".github/actions/setup-zolt/action.yml"), setup);
+        return setup;
     }
 }
