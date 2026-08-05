@@ -36,7 +36,7 @@ The script:
 - sets the basic repository options
 - makes the default Actions token read-only
 - restricts Actions to reviewed, full-SHA dependencies
-- protects `main` with the reviewed repository rules
+- protects `main` with the reviewed solo-maintainer repository rules
 - creates `channel-zap`, `channel-zap-recovery`, `channel-preview`, and
   `channel-stable` with exact deployment-ref policies
 - requires one named reviewer for Zap recovery, prevents self-review, and disables
@@ -45,7 +45,7 @@ The script:
 
 The repository should be public so its release process and evidence are visible.
 
-## 2. Create the teams
+## 2. Define the current team
 
 | Team | Repository access | Job |
 | --- | --- | --- |
@@ -53,24 +53,28 @@ The repository should be public so its release process and evidence are visible.
 | `release-approvers` | Read | Approve stable publication |
 | `maintainers` | Read | Inspect release code and evidence |
 
-Keep organization owners separate and few. A Zolt maintainer does not automatically
-need release or owner access.
+The initial repository has one owner and release engineer. Do not manufacture reviews
+with a second account. Keep organization owners separate and few; a Zolt maintainer does
+not automatically need release or owner access. Add these teams as real trusted people
+join.
 
 ## 3. Protect `main`
 
 The bootstrap creates a `main` ruleset with:
 
 - pull requests required
-- two approvals
-- CODEOWNER review
-- approval of the latest push
+- zero required approvals while only one maintainer exists
+- no required CODEOWNER or latest-push approval that the author cannot provide
 - resolved conversations
 - required `repository` check from GitHub Actions
 - no force pushes
 - no deletion
 - no normal bypass
 
-`CODEOWNERS` protects itself.
+`CODEOWNERS` still records and requests ownership, including for itself; it is not a
+merge gate in solo-maintainer mode. When another trusted maintainer has write access,
+raise the policy to one approval and require CODEOWNER and latest-push approval. Require
+two approvals only when two independent reviewers are actually available.
 
 Before publication, protect these release tag patterns:
 

@@ -130,7 +130,7 @@ Human work per operation:
 | Zap recovery | One protected-environment approval |
 | Preview | Create a protected prerelease tag |
 | Stable | One protected-environment approval |
-| Release-controller change | Two reviews, including the security owner |
+| Release-controller change | Solo owner PR plus required CI; add independent review when staffed |
 | Root or stable-key rotation | Follow the security procedure |
 
 When a second trusted release person is available, stable should prevent self-review.
@@ -187,14 +187,19 @@ Protect `CODEOWNERS` itself.
 
 Protect `main` with:
 
-- two approvals
-- CODEOWNER review
-- approval of the latest push
+- pull requests with zero required approvals while the repository has one maintainer
+- no required CODEOWNER or latest-push approval in solo-maintainer mode
 - all required checks
 - resolved conversations
 - no force pushes
 - no branch deletion
 - no normal bypass
+
+This is an explicit single-person operating mode, not independent human review.
+`CODEOWNERS` continues to document ownership and request reviews without blocking the
+only author. When another trusted maintainer receives write access, require one approval,
+CODEOWNER review, and approval of the latest push. Require two approvals only after two
+independent reviewers exist.
 
 Protect these tag namespaces:
 

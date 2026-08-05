@@ -107,6 +107,53 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void bootstrapMustNotDeadlockSoloMaintainerReviews(@TempDir Path root)
+            throws IOException {
+        Path bootstrap = root.resolve("scripts/bootstrap.sh");
+        Files.createDirectories(bootstrap.getParent());
+        Files.writeString(
+                bootstrap,
+                Files.readString(Path.of("scripts/bootstrap.sh"))
+                        .replace(
+                                "required_approving_review_count: 0",
+                                "required_approving_review_count: 2"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "bootstrap is missing required repository control: "
+                        + "required_approving_review_count: 0"));
+    }
+
+    @Test
+    void policyMustNotDeadlockSoloMaintainerReviews(@TempDir Path root) throws IOException {
+        Path policy = root.resolve("policy/repository-settings.toml");
+        Files.createDirectories(policy.getParent());
+        Files.copy(Path.of("policy/channels.toml"), root.resolve("policy/channels.toml"));
+        Files.writeString(
+                policy,
+                Files.readString(Path.of("policy/repository-settings.toml"))
+                        .replace("required_approvals = 0", "required_approvals = 2")
+                        .replace(
+                                "code_owner_review_required = false",
+                                "code_owner_review_required = true")
+                        .replace(
+                                "latest_push_approval_required = false",
+                                "latest_push_approval_required = true"));
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryPolicyCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "solo-maintainer main must not require an unavailable reviewer"));
+        assertTrue(errors.contains(
+                "solo-maintainer main must not require self CODEOWNER approval"));
+        assertTrue(errors.contains(
+                "solo-maintainer main must not require another latest-push approver"));
+    }
+
+    @Test
     void bootstrapMustRestrictZapDeploymentsToMain(@TempDir Path root) throws IOException {
         Path bootstrap = root.resolve("scripts/bootstrap.sh");
         Files.createDirectories(bootstrap.getParent());

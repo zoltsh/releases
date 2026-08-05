@@ -209,9 +209,9 @@ jq -n '
                 parameters: {
                     allowed_merge_methods: ["squash"],
                     dismiss_stale_reviews_on_push: true,
-                    require_code_owner_review: true,
-                    require_last_push_approval: true,
-                    required_approving_review_count: 2,
+                    require_code_owner_review: false,
+                    require_last_push_approval: false,
+                    required_approving_review_count: 0,
                     required_review_thread_resolution: true
                 }
             },
@@ -271,10 +271,10 @@ cat <<EOF
 Created and pushed ${FULL_REPO}.
 
 Still required in GitHub:
-  1. Create teams: release-engineers and release-approvers.
-  2. Give normal maintainers read-only access to this repository.
-  3. Make release-engineers owners of sensitive paths through CODEOWNERS.
-  4. Add one trusted reviewer to channel-stable and prevent self-review.
+  1. Keep the solo owner in release-engineers; add release-approvers and maintainers only as trusted people join.
+  2. Give normal maintainers read-only access to this repository when they join.
+  3. Keep release-engineers listed for sensitive paths through CODEOWNERS; solo mode does not gate merging on that review.
+  4. Add one trusted reviewer to channel-stable and prevent self-review before stable publication.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
   6. Keep channel-zap-recovery approval-gated; the bootstrap configures ${RECOVERY_REVIEWER} and prevents self-review.
   7. Confirm each environment allows only its bootstrap-managed branch or tag pattern.

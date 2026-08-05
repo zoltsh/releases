@@ -9,9 +9,9 @@ immutable_releases = true
 
 [main_rules]
 pull_request_required = true
-required_approvals = 2
-code_owner_review_required = true
-latest_push_approval_required = true
+required_approvals = 0
+code_owner_review_required = false
+latest_push_approval_required = false
 dismiss_stale_reviews_on_push = true
 conversations_resolved = true
 required_status_check = "repository"

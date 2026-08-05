@@ -146,21 +146,23 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 true,
                 "main changes must use pull requests",
                 errors);
-        Long approvals = mainRules.getLong("required_approvals");
-        if (approvals == null || approvals < 2) {
-            errors.add("release-controller changes must require at least two approvals");
-        }
+        requireLong(
+                mainRules,
+                "required_approvals",
+                0L,
+                "solo-maintainer main must not require an unavailable reviewer",
+                errors);
         requireBoolean(
                 mainRules,
                 "code_owner_review_required",
-                true,
-                "main changes must require CODEOWNER review",
+                false,
+                "solo-maintainer main must not require self CODEOWNER approval",
                 errors);
         requireBoolean(
                 mainRules,
                 "latest_push_approval_required",
-                true,
-                "main changes must require approval of the latest push",
+                false,
+                "solo-maintainer main must not require another latest-push approver",
                 errors);
         requireBoolean(
                 mainRules,
