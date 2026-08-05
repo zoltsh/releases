@@ -146,21 +146,23 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 true,
                 "main changes must use pull requests",
                 errors);
-        Long approvals = mainRules.getLong("required_approvals");
-        if (approvals == null || approvals < 2) {
-            errors.add("release-controller changes must require at least two approvals");
-        }
+        requireLong(
+                mainRules,
+                "required_approvals",
+                0L,
+                "solo-maintainer main must not require an unavailable reviewer",
+                errors);
         requireBoolean(
                 mainRules,
                 "code_owner_review_required",
-                true,
-                "main changes must require CODEOWNER review",
+                false,
+                "solo-maintainer main must not require self CODEOWNER approval",
                 errors);
         requireBoolean(
                 mainRules,
                 "latest_push_approval_required",
-                true,
-                "main changes must require approval of the latest push",
+                false,
+                "solo-maintainer main must not require another latest-push approver",
                 errors);
         requireBoolean(
                 mainRules,
@@ -240,11 +242,82 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 "publication credentials must not run on self-hosted runners",
                 errors);
         TomlTable environments = table(settings, "environments", errors);
+        TomlTable zapEnvironment = table(environments, "channel_zap", errors);
+        TomlTable zapRecoveryEnvironment =
+                table(environments, "channel_zap_recovery", errors);
+        TomlTable previewEnvironment = table(environments, "channel_preview", errors);
+        TomlTable stableEnvironment = table(environments, "channel_stable", errors);
         requireLong(
-                table(environments, "channel_zap", errors),
+                zapEnvironment,
                 "reviewers",
                 0L,
                 "channel-zap must not require a reviewer",
+                errors);
+        requireString(
+                zapEnvironment,
+                "deployment_ref_type",
+                "branch",
+                "channel-zap deployments must use a branch policy",
+                errors);
+        requireString(
+                zapEnvironment,
+                "deployment_ref_pattern",
+                "main",
+                "channel-zap deployments must be restricted to main",
+                errors);
+        requireLong(
+                zapRecoveryEnvironment,
+                "reviewers",
+                1L,
+                "channel-zap-recovery must require one reviewer",
+                errors);
+        requireBoolean(
+                zapRecoveryEnvironment,
+                "prevent_self_review",
+                true,
+                "channel-zap-recovery must prevent self-review",
+                errors);
+        requireBoolean(
+                zapRecoveryEnvironment,
+                "admin_bypass",
+                false,
+                "channel-zap-recovery must disallow administrator bypass",
+                errors);
+        requireString(
+                zapRecoveryEnvironment,
+                "deployment_ref_type",
+                "branch",
+                "channel-zap-recovery deployments must use a branch policy",
+                errors);
+        requireString(
+                zapRecoveryEnvironment,
+                "deployment_ref_pattern",
+                "main",
+                "channel-zap-recovery deployments must be restricted to main",
+                errors);
+        requireString(
+                previewEnvironment,
+                "deployment_ref_type",
+                "tag",
+                "channel-preview deployments must use a tag policy",
+                errors);
+        requireString(
+                previewEnvironment,
+                "deployment_ref_pattern",
+                "zolt-preview-*",
+                "channel-preview deployments must use protected preview tags",
+                errors);
+        requireString(
+                stableEnvironment,
+                "deployment_ref_type",
+                "tag",
+                "channel-stable deployments must use a tag policy",
+                errors);
+        requireString(
+                stableEnvironment,
+                "deployment_ref_pattern",
+                "zolt-v*",
+                "channel-stable deployments must use protected stable tags",
                 errors);
 
         TomlTable tagRules = table(settings, "tag_rules", errors);

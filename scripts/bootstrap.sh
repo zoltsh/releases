@@ -5,10 +5,116 @@ ORG="${ZOLT_GITHUB_ORG:-zoltsh}"
 REPO="${ZOLT_RELEASES_REPO:-releases}"
 FULL_REPO="${ORG}/${REPO}"
 REMOTE="${ZOLT_RELEASES_REMOTE:-https://github.com/${FULL_REPO}.git}"
+RECOVERY_REVIEWER="${ZOLT_RECOVERY_REVIEWER:-}"
 
 fail() {
     printf 'error: %s\n' "$1" >&2
     exit 1
+}
+
+configure_environment_ref() {
+    local environment="$1"
+    local ref_type="$2"
+    local ref_pattern="$3"
+    local endpoint="repos/${FULL_REPO}/environments/${environment}"
+    local environment_state policies
+
+    environment_state="$(gh api "$endpoint" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10" 2>/dev/null || true)"
+    if ! jq -e '
+        .deployment_branch_policy.protected_branches == false and
+        .deployment_branch_policy.custom_branch_policies == true
+    ' <<<"$environment_state" >/dev/null 2>&1; then
+        gh api --method PUT "$endpoint" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            -F 'deployment_branch_policy[protected_branches]=false' \
+            -F 'deployment_branch_policy[custom_branch_policies]=true' >/dev/null
+    fi
+
+    policies="$(gh api "${endpoint}/deployment-branch-policies?per_page=100" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10")"
+
+    while IFS= read -r policy_id; do
+        gh api --method DELETE "${endpoint}/deployment-branch-policies/${policy_id}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" >/dev/null
+    done < <(jq -r \
+        --arg name "$ref_pattern" \
+        --arg type "$ref_type" \
+        '.branch_policies[] | select(.name != $name or .type != $type) | .id' \
+        <<<"$policies")
+
+    if ! jq -e \
+        --arg name "$ref_pattern" \
+        --arg type "$ref_type" \
+        'any(.branch_policies[]; .name == $name and .type == $type)' \
+        <<<"$policies" >/dev/null; then
+        gh api --method POST "${endpoint}/deployment-branch-policies" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            -f name="$ref_pattern" \
+            -f type="$ref_type" >/dev/null
+    fi
+
+    policies="$(gh api "${endpoint}/deployment-branch-policies?per_page=100" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10")"
+    jq -e \
+        --arg name "$ref_pattern" \
+        --arg type "$ref_type" \
+        '.total_count == 1 and
+         .branch_policies[0].name == $name and
+         .branch_policies[0].type == $type' \
+        <<<"$policies" >/dev/null \
+        || fail "${environment} must allow only ${ref_type} ${ref_pattern}"
+}
+
+configure_recovery_protection() {
+    local environment="channel-zap-recovery"
+    local endpoint="repos/${FULL_REPO}/environments/${environment}"
+    local reviewer_id protection_payload environment_state
+
+    [ -n "$RECOVERY_REVIEWER" ] \
+        || fail "set ZOLT_RECOVERY_REVIEWER to the trusted recovery approver login"
+    reviewer_id="$(gh api "users/${RECOVERY_REVIEWER}" --jq .id 2>/dev/null || true)"
+    [ -n "$reviewer_id" ] \
+        || fail "recovery reviewer ${RECOVERY_REVIEWER} is not a GitHub user"
+
+    protection_payload="$(jq -n \
+        --argjson reviewer_id "$reviewer_id" '
+        {
+            wait_timer: 0,
+            prevent_self_review: true,
+            can_admins_bypass: false,
+            reviewers: [{type: "User", id: $reviewer_id}],
+            deployment_branch_policy: {
+                protected_branches: false,
+                custom_branch_policies: true
+            }
+        }
+    ')"
+    gh api --method PUT "$endpoint" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10" \
+        --input - <<<"$protection_payload" >/dev/null
+
+    environment_state="$(gh api "$endpoint" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2026-03-10")"
+    jq -e \
+        --arg login "$RECOVERY_REVIEWER" '
+        .can_admins_bypass == false and
+        any(.protection_rules[];
+            .type == "required_reviewers" and
+            .prevent_self_review == true and
+            (.reviewers | length) == 1 and
+            .reviewers[0].type == "User" and
+            .reviewers[0].reviewer.login == $login)
+    ' <<<"$environment_state" >/dev/null \
+        || fail "channel-zap-recovery must require only ${RECOVERY_REVIEWER}, prevent self-review, and disallow administrator bypass"
 }
 
 command -v git >/dev/null 2>&1 || fail "git is required"
@@ -16,6 +122,10 @@ command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required: https://cli.githu
 command -v jq >/dev/null 2>&1 || fail "jq is required: https://jqlang.github.io/jq/"
 
 gh auth status >/dev/null 2>&1 || fail "authenticate GitHub CLI with: gh auth login"
+
+if [ -z "$RECOVERY_REVIEWER" ]; then
+    RECOVERY_REVIEWER="$(gh api user --jq .login)"
+fi
 
 org_role="$(gh api "user/memberships/orgs/${ORG}" --jq .role 2>/dev/null || true)"
 if [ "$org_role" != "admin" ]; then
@@ -99,9 +209,9 @@ jq -n '
                 parameters: {
                     allowed_merge_methods: ["squash"],
                     dismiss_stale_reviews_on_push: true,
-                    require_code_owner_review: true,
-                    require_last_push_approval: true,
-                    required_approving_review_count: 2,
+                    require_code_owner_review: false,
+                    require_last_push_approval: false,
+                    required_approving_review_count: 0,
                     required_review_thread_resolution: true
                 }
             },
@@ -136,9 +246,11 @@ case "$ruleset_count" in
         ;;
 esac
 
-for environment in channel-zap channel-preview channel-stable; do
-    gh api --method PUT "repos/${FULL_REPO}/environments/${environment}" >/dev/null
-done
+configure_environment_ref channel-zap branch main
+configure_environment_ref channel-zap-recovery branch main
+configure_recovery_protection
+configure_environment_ref channel-preview tag 'zolt-preview-*'
+configure_environment_ref channel-stable tag 'zolt-v*'
 
 immutable_enabled="$(gh api "repos/${FULL_REPO}/immutable-releases" \
     -H "Accept: application/vnd.github+json" \
@@ -159,13 +271,15 @@ cat <<EOF
 Created and pushed ${FULL_REPO}.
 
 Still required in GitHub:
-  1. Create teams: release-engineers and release-approvers.
-  2. Give normal maintainers read-only access to this repository.
-  3. Make release-engineers owners of sensitive paths through CODEOWNERS.
-  4. Add one trusted reviewer to channel-stable and prevent self-review.
+  1. Keep the solo owner in release-engineers; add release-approvers and maintainers only as trusted people join.
+  2. Give normal maintainers read-only access to this repository when they join.
+  3. Keep release-engineers listed for sensitive paths through CODEOWNERS; solo mode does not gate merging on that review.
+  4. Add one trusted reviewer to channel-stable and prevent self-review before stable publication.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
-  6. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
-  7. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
+  6. Keep channel-zap-recovery approval-gated; the bootstrap configures ${RECOVERY_REVIEWER} and prevents self-review.
+  7. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
+  8. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
+  9. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
 
 No publication secret is required for candidate builds.
 EOF

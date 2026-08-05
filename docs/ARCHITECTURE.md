@@ -127,9 +127,10 @@ Human work per operation:
 | Normal source pull request | One review |
 | Release-sensitive source change | Release-engineer CODEOWNER review |
 | Zap after merge | None |
+| Zap recovery | One protected-environment approval |
 | Preview | Create a protected prerelease tag |
 | Stable | One protected-environment approval |
-| Release-controller change | Two reviews, including the security owner |
+| Release-controller change | Solo owner PR plus required CI; add independent review when staffed |
 | Root or stable-key rotation | Follow the security procedure |
 
 When a second trusted release person is available, stable should prevent self-review.
@@ -186,14 +187,19 @@ Protect `CODEOWNERS` itself.
 
 Protect `main` with:
 
-- two approvals
-- CODEOWNER review
-- approval of the latest push
+- pull requests with zero required approvals while the repository has one maintainer
+- no required CODEOWNER or latest-push approval in solo-maintainer mode
 - all required checks
 - resolved conversations
 - no force pushes
 - no branch deletion
 - no normal bypass
+
+This is an explicit single-person operating mode, not independent human review.
+`CODEOWNERS` continues to document ownership and request reviews without blocking the
+only author. When another trusted maintainer receives write access, require one approval,
+CODEOWNER review, and approval of the latest push. Require two approvals only after two
+independent reviewers exist.
 
 Protect these tag namespaces:
 
@@ -293,6 +299,16 @@ Candidate code never runs with signing or storage credentials for any channel.
 - publishes the immutable release
 - changes the channel file last
 
+### Post-publication smoke job
+
+- starts on another fresh GitHub-hosted runner after publication
+- has read-only repository permission
+- has no publishing environment, signing key, or storage credentials
+- downloads the reviewed public bootstrap
+- installs the exact version named by the completed publication job
+- executes the installer's built-in version and initialization smokes
+- independently confirms `zolt --version` and checks the recorded channel URL
+
 Source code can create a bad candidate. It cannot turn that candidate into a trusted
 preview or stable release by gaining access to publication credentials.
 
@@ -382,12 +398,16 @@ candidate passes
   -> publish the GitHub Release immutably
   -> publish the release index pair
   -> change the zap channel last
+  -> start a fresh read-only job with no publishing environment
+  -> install and execute the exact public version in a post-publication smoke
 ```
 
 Zap needs no human approval. Its workflow is hard-coded to zap. Shared publication code
 accepts a channel, but each workflow supplies a fixed value and has only that channel's
 signing environment. The signing and metadata credentials are scoped only to their
-steps. Candidate source is never checked out or executed on that runner.
+steps. Candidate source is never checked out or executed on that runner. The public
+candidate executes only in the following read-only post-publication smoke job, where no
+channel secret or write token is available.
 
 ### Preview publication
 

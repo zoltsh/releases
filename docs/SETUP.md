@@ -36,13 +36,16 @@ The script:
 - sets the basic repository options
 - makes the default Actions token read-only
 - restricts Actions to reviewed, full-SHA dependencies
-- protects `main` with the reviewed repository rules
-- creates `channel-zap`, `channel-preview`, and `channel-stable`
+- protects `main` with the reviewed solo-maintainer repository rules
+- creates `channel-zap`, `channel-zap-recovery`, `channel-preview`, and
+  `channel-stable` with exact deployment-ref policies
+- requires one named reviewer for Zap recovery, prevents self-review, and disables
+  administrator bypass
 - enables immutable GitHub Releases for every channel
 
 The repository should be public so its release process and evidence are visible.
 
-## 2. Create the teams
+## 2. Define the current team
 
 | Team | Repository access | Job |
 | --- | --- | --- |
@@ -50,24 +53,28 @@ The repository should be public so its release process and evidence are visible.
 | `release-approvers` | Read | Approve stable publication |
 | `maintainers` | Read | Inspect release code and evidence |
 
-Keep organization owners separate and few. A Zolt maintainer does not automatically
-need release or owner access.
+The initial repository has one owner and release engineer. Do not manufacture reviews
+with a second account. Keep organization owners separate and few; a Zolt maintainer does
+not automatically need release or owner access. Add these teams as real trusted people
+join.
 
 ## 3. Protect `main`
 
 The bootstrap creates a `main` ruleset with:
 
 - pull requests required
-- two approvals
-- CODEOWNER review
-- approval of the latest push
+- zero required approvals while only one maintainer exists
+- no required CODEOWNER or latest-push approval that the author cannot provide
 - resolved conversations
 - required `repository` check from GitHub Actions
 - no force pushes
 - no deletion
 - no normal bypass
 
-`CODEOWNERS` protects itself.
+`CODEOWNERS` still records and requests ownership, including for itself; it is not a
+merge gate in solo-maintainer mode. When another trusted maintainer has write access,
+raise the policy to one approval and require CODEOWNER and latest-push approval. Require
+two approvals only when two independent reviewers are actually available.
 
 Before publication, protect these release tag patterns:
 
@@ -100,18 +107,29 @@ They must not come from workflow input or the candidate commit.
 
 ## 5. Configure environments
 
-| Environment | Reviewers | Purpose |
-| --- | ---: | --- |
-| `channel-zap` | 0 | Automatic zap publication |
-| `channel-preview` | 0 | Preview publication after a protected tag |
-| `channel-stable` | 1 | Stable publication after approval |
+| Environment | Allowed workflow ref | Reviewers | Purpose |
+| --- | --- | ---: | --- |
+| `channel-zap` | branch `main` | 0 | Automatic zap publication |
+| `channel-zap-recovery` | branch `main` | 1 | Operator-approved zap rollback |
+| `channel-preview` | tag `zolt-preview-*` | 0 | Preview publication after a protected tag |
+| `channel-stable` | tag `zolt-v*` | 1 | Stable publication after approval |
 
+Set `ZOLT_RECOVERY_REVIEWER` before running the bootstrap when the authenticated GitHub
+owner should not be the recovery reviewer. The bootstrap requires that one user,
+prevents self-review, and disables administrator bypass for `channel-zap-recovery`.
 For `channel-stable`, prevent self-review and disable administrator bypass where
-available.
+available. The bootstrap replaces each environment's deployment branch and tag rules
+with the single pattern shown above; a workflow from any other ref cannot receive that
+environment's secrets.
 
 Zap now has a reviewed publisher and is enabled in `policy/channels.toml`. Preview and
 stable must not receive secrets until their own publishers are implemented and
 reviewed.
+
+The current preview and stable workflows are manual placeholders. Before enabling
+either channel, make its workflow run from the matching protected tag or revisit its
+environment ref policy; a manual dispatch from `main` does not satisfy the tag patterns
+shown above.
 
 ## 6. Connect `zoltsh/zolt`
 
@@ -197,6 +215,18 @@ DO_SPACES_SECRET_ACCESS_KEY
 ZOLT_RELEASE_ED25519_PRIVATE_KEY
 ```
 
+Add only the two narrow Spaces credentials to `channel-zap-recovery`:
+
+```text
+DO_SPACES_ACCESS_KEY_ID
+DO_SPACES_SECRET_ACCESS_KEY
+```
+
+GitHub does not reveal an existing environment secret's value, so provision the same
+narrow credential again from its trusted source. Do not put the signing key in the
+recovery environment: recovery republishes metadata signatures from an immutable
+release and must not be able to create new signed metadata.
+
 `ZOLT_RELEASE_ED25519_PRIVATE_KEY` must be the existing unencrypted PKCS#8 Ed25519 PEM
 whose public key is bundled as `zolt-release-2026`. The trusted signing command proves
 the match before uploading. If that private key has been lost, stop and design a
@@ -236,9 +266,14 @@ Before any public release:
 
 - [ ] Immutable releases are enabled.
 - [ ] Branch and tag rules are active.
+- [ ] `channel-zap` permits only the `main` branch.
+- [ ] `channel-zap-recovery` permits only `main`, requires one reviewer, prevents
+      self-review, and disallows administrator bypass.
+- [ ] Preview and stable permit only their protected release-tag patterns.
 - [ ] Stable has one reviewer and prevents self-review.
 - [ ] Zap and preview have no reviewers.
 - [ ] `channel-zap` has the narrow `zolt-dist` Spaces key and matching Ed25519 private key.
+- [ ] `channel-zap-recovery` has only the narrow `zolt-dist` Spaces key.
 - [ ] No release archive is uploaded to `zolt-dist`.
 - [ ] `https://dist.zolt.sh/install.sh` matches `scripts/install-bootstrap` exactly.
 - [ ] The live zap channel and release index verify with `zolt-release-2026`.

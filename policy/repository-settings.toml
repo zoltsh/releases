@@ -9,9 +9,9 @@ immutable_releases = true
 
 [main_rules]
 pull_request_required = true
-required_approvals = 2
-code_owner_review_required = true
-latest_push_approval_required = true
+required_approvals = 0
+code_owner_review_required = false
+latest_push_approval_required = false
 dismiss_stale_reviews_on_push = true
 conversations_resolved = true
 required_status_check = "repository"
@@ -30,14 +30,27 @@ self_hosted_privileged_release_runners = false
 
 [environments.channel_zap]
 reviewers = 0
+deployment_ref_type = "branch"
+deployment_ref_pattern = "main"
+
+[environments.channel_zap_recovery]
+reviewers = 1
+prevent_self_review = true
+admin_bypass = false
+deployment_ref_type = "branch"
+deployment_ref_pattern = "main"
 
 [environments.channel_preview]
 reviewers = 0
+deployment_ref_type = "tag"
+deployment_ref_pattern = "zolt-preview-*"
 
 [environments.channel_stable]
 reviewers = 1
 prevent_self_review = true
 admin_bypass = false
+deployment_ref_type = "tag"
+deployment_ref_pattern = "zolt-v*"
 
 [tag_rules.zap]
 pattern = "zolt-zap-*"

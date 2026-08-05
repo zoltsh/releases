@@ -187,6 +187,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap publish workflow contains forbidden candidate authority: " + fragment);
             }
         }
+        validateUnprivilegedPostPublicationSmoke(workflow, "zap publish", errors);
         int immutable = workflow.indexOf("scripts/publish-github-release");
         int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
@@ -211,6 +212,12 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add("zap recovery workflow is missing required contract: " + fragment);
             }
         }
+        for (String fragment : RepositoryRules.FORBIDDEN_RECOVER_WORKFLOW_FRAGMENTS) {
+            if (workflow.contains(fragment)) {
+                errors.add("zap recovery workflow contains forbidden signing authority: " + fragment);
+            }
+        }
+        validateUnprivilegedPostPublicationSmoke(workflow, "zap recovery", errors);
         int immutable = workflow.indexOf(".immutable == true");
         int bootstrap = workflow.indexOf("scripts/publish-installer-bootstrap");
         int metadata = workflow.indexOf("scripts/publish-channel-metadata");
@@ -221,6 +228,25 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 || publicVerification < metadata) {
             errors.add(
                     "zap recovery workflow must verify an immutable release, publish the stable installer bootstrap, move metadata, then verify the public result");
+        }
+    }
+
+    private static void validateUnprivilegedPostPublicationSmoke(
+            String workflow, String workflowName, List<String> errors) {
+        int smoke = workflow.indexOf("\n  post-publication-smoke:\n");
+        int candidateExecution = workflow.indexOf("ZOLT_INSTALL_ROOT=");
+        if (smoke < 0 || candidateExecution < smoke) {
+            errors.add(workflowName
+                    + " must execute the public candidate only in a separate post-publication smoke job");
+            return;
+        }
+        String smokeJob = workflow.substring(smoke);
+        if (!smokeJob.contains("permissions:\n      contents: read")
+                || smokeJob.contains("contents: write")
+                || smokeJob.contains("environment:")
+                || smokeJob.contains("secrets.")) {
+            errors.add(workflowName
+                    + " post-publication smoke must have read-only contents permission and no publishing environment or secrets");
         }
     }
 
