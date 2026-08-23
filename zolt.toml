@@ -2,11 +2,8 @@
 name = "zolt-releases"
 version = "0.1.0-SNAPSHOT"
 group = "sh.zolt"
-java = "21"
+java = 21
 main = "sh.zolt.releases.cli.ReleaseController"
-
-[repositories]
-central = "https://repo.maven.apache.org/maven2"
 
 [dependencies]
 "com.fasterxml.jackson.core:jackson-databind" = "2.21.2"
@@ -14,18 +11,12 @@ central = "https://repo.maven.apache.org/maven2"
 "org.slf4j:slf4j-nop" = "2.0.17"
 "org.tomlj:tomlj" = "1.1.1"
 
-[test.dependencies]
+[dependencies.test]
 "org.junit.platform:junit-platform-console-standalone" = "1.11.4"
 
-[dependencyPolicy.licenses]
+[dependencies.policy.licenses]
 allow = ["Apache-2.0", "BSD-3-Clause", "MIT"]
 unknown = "fail"
 
 [package]
-mode = "uber"
-
-[build]
-source = "src/main/java"
-test = "src/test/java"
-output = "target/classes"
-testOutput = "target/test-classes"
+mode = "uber-jar"
