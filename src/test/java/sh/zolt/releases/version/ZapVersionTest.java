@@ -34,6 +34,42 @@ final class ZapVersionTest {
     }
 
     @Test
+    void readsVersionFromWorkspaceProject() throws IOException {
+        Path project = temporary.resolve("zolt.toml");
+        Files.writeString(project, """
+                [workspace]
+                name = "zolt"
+
+                [workspace.project]
+                group = "sh.zolt"
+                version = "0.1.0-SNAPSHOT"
+                java = 21
+                """);
+
+        assertEquals("0.1.0", ZapVersion.readBaseVersion(project));
+    }
+
+    @Test
+    void rejectsConflictingProjectAndWorkspaceProjectVersions() throws IOException {
+        Path project = temporary.resolve("zolt.toml");
+        Files.writeString(project, """
+                [project]
+                version = "0.1.0-SNAPSHOT"
+
+                [workspace.project]
+                version = "0.2.0-SNAPSHOT"
+                """);
+
+        IllegalArgumentException error =
+                assertThrows(IllegalArgumentException.class, () -> ZapVersion.readBaseVersion(project));
+
+        assertEquals(
+                project
+                        + " contains conflicting [project].version and [workspace.project].version",
+                error.getMessage());
+    }
+
+    @Test
     void normalizesTimestampOffsetToUtc() {
         String version = ZapVersion.compute(
                 "1.2.3",
