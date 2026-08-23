@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           source_created_at="$(jq -er '.runCreatedAt' out/source-run.json)"
           version="$(zolt run --quiet -- compute-zap-version \
-              --project source/apps/zolt/zolt.toml \
+              --project source/zolt.toml \
               --source-sha "$SOURCE_SHA" \
               --source-created-at "$source_created_at")"
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"

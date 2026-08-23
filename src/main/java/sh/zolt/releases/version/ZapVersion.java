@@ -19,10 +19,22 @@ public final class ZapVersion {
                     "invalid TOML in " + projectFile + ": " + document.errors().getFirst());
         }
         TomlTable project = document.getTable("project");
-        String raw = project == null ? null : project.getString("version");
-        if (raw == null || raw.isBlank()) {
+        TomlTable workspace = document.getTable("workspace");
+        TomlTable workspaceProject = workspace == null ? null : workspace.getTable("project");
+        String projectVersion = version(project);
+        String workspaceProjectVersion = version(workspaceProject);
+        if (projectVersion != null
+                && workspaceProjectVersion != null
+                && !projectVersion.equals(workspaceProjectVersion)) {
             throw new IllegalArgumentException(
-                    projectFile + " does not contain [project].version");
+                    projectFile
+                            + " contains conflicting [project].version and [workspace.project].version");
+        }
+        String raw = workspaceProjectVersion == null ? projectVersion : workspaceProjectVersion;
+        if (raw == null) {
+            throw new IllegalArgumentException(
+                    projectFile
+                            + " does not contain [project].version or [workspace.project].version");
         }
         String base = raw.endsWith("-SNAPSHOT")
                 ? raw.substring(0, raw.length() - "-SNAPSHOT".length())
@@ -33,6 +45,14 @@ public final class ZapVersion {
                             + raw + "\"");
         }
         return base;
+    }
+
+    private static String version(TomlTable table) {
+        if (table == null) {
+            return null;
+        }
+        String value = table.getString("version");
+        return value == null || value.isBlank() ? null : value;
     }
 
     public static Instant parseSourceTimestamp(String value) {
