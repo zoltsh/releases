@@ -1,15 +1,50 @@
-version = 5
-projectResolutionFingerprint = "sha256:de51e59e678cb3cd48c887474cf0c4a88a549d99fe6d739e92b591929ff8e093"
-projectResolutionInputFingerprints = ["dependencies.compile=sha256:d96615ce34d357805468444becf26804d4e2d93bc3c7c69ee1210c3b2089bc09", "dependencies.test=sha256:e5516a403420e89a8b33189dcf163f06078935e4e6bcd5907dab410bee6e5a9e", "framework.quarkus=sha256:68d7c5d5cedc29b433b63ce5b53c7054a4c27e79e03430701582a1b1d5cea01f", "framework.springBoot.native=sha256:92f88357bc81a539a14f201ee0d0a7525b5e4e2acaf07f0e9b826964bb5a4b63", "java=sha256:fda3a3e438244e08721bfc730e9f34ef4ee260820f6fbcd44a4c64601a93bf71", "package=sha256:c16af6b6d820d3abd556392c697843ce80618443884f23a86a387efddde316e0", "repositories=sha256:e01822fdeeed818adfc2169ed3a3c6e24d67f4455bfc41e52af4d25221a85c51", "schema=sha256:5c48b263086f330542d7f620f6e05a9d4f2ffe1ca79d8b531d03ea3cbc6f9b15"]
+version = 7
+projectResolutionFingerprint = "sha256:06480a26c2727b8aa1decbcb4b7653765a57e2821f223dadf323b15454b652af"
+projectResolutionInputFingerprints = ["dependencies.compile=sha256:d96615ce34d357805468444becf26804d4e2d93bc3c7c69ee1210c3b2089bc09", "dependencies.test=sha256:e5516a403420e89a8b33189dcf163f06078935e4e6bcd5907dab410bee6e5a9e", "framework.quarkus=sha256:68d7c5d5cedc29b433b63ce5b53c7054a4c27e79e03430701582a1b1d5cea01f", "framework.springBoot.native=sha256:92f88357bc81a539a14f201ee0d0a7525b5e4e2acaf07f0e9b826964bb5a4b63", "java=sha256:fda3a3e438244e08721bfc730e9f34ef4ee260820f6fbcd44a4c64601a93bf71", "package=sha256:1ae86c65b1e6e588a2c7b97e49de5aa12a31ace329e1253d80d6be0028c0ec59", "repositories=sha256:050e76b3ceee3c8b6aa20eb9cc97ddeed8c5ba88e4bc93efa14fa72f06aa786e", "schema=sha256:728eb979951359b22239feac7a9b20e12181a730e2c206f050502d52e0dcaf85"]
+
+[[dependencyRoot]]
+member = "."
+id = "com.fasterxml.jackson.core:jackson-databind"
+version = "2.21.2"
+lane = "implementation"
+resolvedScope = "compile"
+
+[[dependencyRoot]]
+member = "."
+id = "com.networknt:json-schema-validator"
+version = "2.0.4"
+lane = "implementation"
+resolvedScope = "compile"
+
+[[dependencyRoot]]
+member = "."
+id = "org.slf4j:slf4j-nop"
+version = "2.0.17"
+lane = "implementation"
+resolvedScope = "compile"
+
+[[dependencyRoot]]
+member = "."
+id = "org.tomlj:tomlj"
+version = "1.1.1"
+lane = "implementation"
+resolvedScope = "compile"
+
+[[dependencyRoot]]
+member = "."
+id = "org.junit.platform:junit-platform-console-standalone"
+version = "1.11.4"
+lane = "test"
+resolvedScope = "test"
 
 [[package]]
 id = "com.ethlo.time:itu"
 version = "1.14.0"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = false
-jar = "com/ethlo/time/itu/1.14.0/itu-1.14.0.jar"
-pom = "com/ethlo/time/itu/1.14.0/itu-1.14.0.pom"
+jar = "blobs/v2/sha256/5cf40ab0cc77828ab2b875b1f3ecd71c8295d7721933476abc2e08fddcea164a/itu-1.14.0.jar"
+pom = "blobs/v2/sha256/0d5ae0bec09495529c63cc8a6c13253870686832a4e3b206c138165035ae4bc5/itu-1.14.0.pom"
 jarSha256 = "5cf40ab0cc77828ab2b875b1f3ecd71c8295d7721933476abc2e08fddcea164a"
 pomSha256 = "0d5ae0bec09495529c63cc8a6c13253870686832a4e3b206c138165035ae4bc5"
 dependencies = []
@@ -17,11 +52,11 @@ dependencies = []
 [[package]]
 id = "com.fasterxml.jackson.core:jackson-annotations"
 version = "2.21"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = false
-jar = "com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar"
-pom = "com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.pom"
+jar = "blobs/v2/sha256/53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b/jackson-annotations-2.21.jar"
+pom = "blobs/v2/sha256/71cac5392151e2a528cc9a09179f0a334179f05c52f8e596cf58ddf12bb27f2b/jackson-annotations-2.21.pom"
 jarSha256 = "53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b"
 pomSha256 = "71cac5392151e2a528cc9a09179f0a334179f05c52f8e596cf58ddf12bb27f2b"
 dependencies = []
@@ -29,11 +64,11 @@ dependencies = []
 [[package]]
 id = "com.fasterxml.jackson.core:jackson-core"
 version = "2.21.2"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = false
-jar = "com/fasterxml/jackson/core/jackson-core/2.21.2/jackson-core-2.21.2.jar"
-pom = "com/fasterxml/jackson/core/jackson-core/2.21.2/jackson-core-2.21.2.pom"
+jar = "blobs/v2/sha256/12e8655b100267b44d0f14d01b1f5082a5105e616174dc4307be1a761e92407b/jackson-core-2.21.2.jar"
+pom = "blobs/v2/sha256/bab0e5599649ccb5ab21a9cf9d2e57192de1e48e6d23524dc253d62fc73c9634/jackson-core-2.21.2.pom"
 jarSha256 = "12e8655b100267b44d0f14d01b1f5082a5105e616174dc4307be1a761e92407b"
 pomSha256 = "bab0e5599649ccb5ab21a9cf9d2e57192de1e48e6d23524dc253d62fc73c9634"
 dependencies = []
@@ -41,11 +76,11 @@ dependencies = []
 [[package]]
 id = "com.fasterxml.jackson.core:jackson-databind"
 version = "2.21.2"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = true
-jar = "com/fasterxml/jackson/core/jackson-databind/2.21.2/jackson-databind-2.21.2.jar"
-pom = "com/fasterxml/jackson/core/jackson-databind/2.21.2/jackson-databind-2.21.2.pom"
+jar = "blobs/v2/sha256/8c982f01f148d805f0aaac2339011244757e0df7c6ff8951f2fa3f433b8ed849/jackson-databind-2.21.2.jar"
+pom = "blobs/v2/sha256/cf8e0ecdc35f02da06e27f4157600ba9d7649c5272e4d6b795ef2a42f070a262/jackson-databind-2.21.2.pom"
 jarSha256 = "8c982f01f148d805f0aaac2339011244757e0df7c6ff8951f2fa3f433b8ed849"
 pomSha256 = "cf8e0ecdc35f02da06e27f4157600ba9d7649c5272e4d6b795ef2a42f070a262"
 dependencies = ["com.fasterxml.jackson.core:jackson-annotations:2.21:jar:compile", "com.fasterxml.jackson.core:jackson-core:2.21.2:jar:compile"]
@@ -53,11 +88,11 @@ dependencies = ["com.fasterxml.jackson.core:jackson-annotations:2.21:jar:compile
 [[package]]
 id = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml"
 version = "2.18.4"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = false
-jar = "com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.18.4/jackson-dataformat-yaml-2.18.4.jar"
-pom = "com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.18.4/jackson-dataformat-yaml-2.18.4.pom"
+jar = "blobs/v2/sha256/496ba696703eab7d8f2b307711cfa8d83b59efae748e22e36f814a3bbf3d7659/jackson-dataformat-yaml-2.18.4.jar"
+pom = "blobs/v2/sha256/e5e8a829b1409e03372f3672d96e0bf1bc47520d2427e440d69394b7c09ce84c/jackson-dataformat-yaml-2.18.4.pom"
 jarSha256 = "496ba696703eab7d8f2b307711cfa8d83b59efae748e22e36f814a3bbf3d7659"
 pomSha256 = "e5e8a829b1409e03372f3672d96e0bf1bc47520d2427e440d69394b7c09ce84c"
 dependencies = ["com.fasterxml.jackson.core:jackson-core:2.21.2:jar:compile", "com.fasterxml.jackson.core:jackson-databind:2.21.2:jar:compile", "org.yaml:snakeyaml:2.3:jar:compile"]
@@ -65,11 +100,11 @@ dependencies = ["com.fasterxml.jackson.core:jackson-core:2.21.2:jar:compile", "c
 [[package]]
 id = "com.networknt:json-schema-validator"
 version = "2.0.4"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = true
-jar = "com/networknt/json-schema-validator/2.0.4/json-schema-validator-2.0.4.jar"
-pom = "com/networknt/json-schema-validator/2.0.4/json-schema-validator-2.0.4.pom"
+jar = "blobs/v2/sha256/4856729c8f38ffba02380b0895b7e98a511f6e68a1fb6424782f3e6549dbba07/json-schema-validator-2.0.4.jar"
+pom = "blobs/v2/sha256/62d6e73f4fae551533b4c39ba60cbdbb2508f961f1f752f6431549b165b34604/json-schema-validator-2.0.4.pom"
 jarSha256 = "4856729c8f38ffba02380b0895b7e98a511f6e68a1fb6424782f3e6549dbba07"
 pomSha256 = "62d6e73f4fae551533b4c39ba60cbdbb2508f961f1f752f6431549b165b34604"
 dependencies = ["com.ethlo.time:itu:1.14.0:jar:compile", "com.fasterxml.jackson.core:jackson-databind:2.21.2:jar:compile", "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.4:jar:compile", "org.slf4j:slf4j-api:2.0.17:jar:compile"]
@@ -77,11 +112,11 @@ dependencies = ["com.ethlo.time:itu:1.14.0:jar:compile", "com.fasterxml.jackson.
 [[package]]
 id = "org.antlr:antlr4-runtime"
 version = "4.11.1"
-source = "maven-central"
+source = "central"
 scope = "runtime"
 direct = false
-jar = "org/antlr/antlr4-runtime/4.11.1/antlr4-runtime-4.11.1.jar"
-pom = "org/antlr/antlr4-runtime/4.11.1/antlr4-runtime-4.11.1.pom"
+jar = "blobs/v2/sha256/e06c6553c1ccc14d36052ec4b0fc6f13b808cf957b5b1dc3f61bf401996ada59/antlr4-runtime-4.11.1.jar"
+pom = "blobs/v2/sha256/c456ec2959078c591fbd7ef69ad9400a727920068d746989c74ab804ed681b34/antlr4-runtime-4.11.1.pom"
 jarSha256 = "e06c6553c1ccc14d36052ec4b0fc6f13b808cf957b5b1dc3f61bf401996ada59"
 pomSha256 = "c456ec2959078c591fbd7ef69ad9400a727920068d746989c74ab804ed681b34"
 dependencies = []
@@ -89,11 +124,11 @@ dependencies = []
 [[package]]
 id = "org.checkerframework:checker-qual"
 version = "3.21.2"
-source = "maven-central"
+source = "central"
 scope = "runtime"
 direct = false
-jar = "org/checkerframework/checker-qual/3.21.2/checker-qual-3.21.2.jar"
-pom = "org/checkerframework/checker-qual/3.21.2/checker-qual-3.21.2.pom"
+jar = "blobs/v2/sha256/7e8554c902b9b839e61396cfe3a64c84ecabfb8eb652c410bfd8e4f5c1a8ece8/checker-qual-3.21.2.jar"
+pom = "blobs/v2/sha256/81c7d4709177f65a40bcd584d89a857f1ac389c545c5ae6940cb6f143723a395/checker-qual-3.21.2.pom"
 jarSha256 = "7e8554c902b9b839e61396cfe3a64c84ecabfb8eb652c410bfd8e4f5c1a8ece8"
 pomSha256 = "81c7d4709177f65a40bcd584d89a857f1ac389c545c5ae6940cb6f143723a395"
 dependencies = []
@@ -101,11 +136,11 @@ dependencies = []
 [[package]]
 id = "org.junit.platform:junit-platform-console-standalone"
 version = "1.11.4"
-source = "maven-central"
+source = "central"
 scope = "test"
 direct = true
-jar = "org/junit/platform/junit-platform-console-standalone/1.11.4/junit-platform-console-standalone-1.11.4.jar"
-pom = "org/junit/platform/junit-platform-console-standalone/1.11.4/junit-platform-console-standalone-1.11.4.pom"
+jar = "blobs/v2/sha256/b016ef6b1c3454d6d7c2c88ce081dabf289699686af6622d6e4e2e1b54b4a2fc/junit-platform-console-standalone-1.11.4.jar"
+pom = "blobs/v2/sha256/f44619c18edb94360cc382e6baf943e9300625d1a0a949ee158977eace5713d1/junit-platform-console-standalone-1.11.4.pom"
 jarSha256 = "b016ef6b1c3454d6d7c2c88ce081dabf289699686af6622d6e4e2e1b54b4a2fc"
 pomSha256 = "f44619c18edb94360cc382e6baf943e9300625d1a0a949ee158977eace5713d1"
 dependencies = []
@@ -113,11 +148,11 @@ dependencies = []
 [[package]]
 id = "org.slf4j:slf4j-api"
 version = "2.0.17"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = false
-jar = "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar"
-pom = "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.pom"
+jar = "blobs/v2/sha256/7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832/slf4j-api-2.0.17.jar"
+pom = "blobs/v2/sha256/150c40287f7cecdc21b9380caac98e928c4f33c023db6b348df1c5ac977026bf/slf4j-api-2.0.17.pom"
 jarSha256 = "7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832"
 pomSha256 = "150c40287f7cecdc21b9380caac98e928c4f33c023db6b348df1c5ac977026bf"
 dependencies = []
@@ -125,11 +160,11 @@ dependencies = []
 [[package]]
 id = "org.slf4j:slf4j-nop"
 version = "2.0.17"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = true
-jar = "org/slf4j/slf4j-nop/2.0.17/slf4j-nop-2.0.17.jar"
-pom = "org/slf4j/slf4j-nop/2.0.17/slf4j-nop-2.0.17.pom"
+jar = "blobs/v2/sha256/3716f83649ec66161a2edefd4f49df34d1dd1c51cdcf941996c6987260f0a829/slf4j-nop-2.0.17.jar"
+pom = "blobs/v2/sha256/e5e548dce8c1c979138a7e96ca354510fa0ce103f0a6df53a1f5b25e9298b9b2/slf4j-nop-2.0.17.pom"
 jarSha256 = "3716f83649ec66161a2edefd4f49df34d1dd1c51cdcf941996c6987260f0a829"
 pomSha256 = "e5e548dce8c1c979138a7e96ca354510fa0ce103f0a6df53a1f5b25e9298b9b2"
 dependencies = ["org.slf4j:slf4j-api:2.0.17:jar:compile"]
@@ -137,11 +172,11 @@ dependencies = ["org.slf4j:slf4j-api:2.0.17:jar:compile"]
 [[package]]
 id = "org.tomlj:tomlj"
 version = "1.1.1"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = true
-jar = "org/tomlj/tomlj/1.1.1/tomlj-1.1.1.jar"
-pom = "org/tomlj/tomlj/1.1.1/tomlj-1.1.1.pom"
+jar = "blobs/v2/sha256/383b7c66966c42ee4913ec977a7b6573631866bddc5318ec4a6215b688dd0d6c/tomlj-1.1.1.jar"
+pom = "blobs/v2/sha256/1393089af1f9260c004c22313197cae9db1385ccbb30499a82d5a931d1762f66/tomlj-1.1.1.pom"
 jarSha256 = "383b7c66966c42ee4913ec977a7b6573631866bddc5318ec4a6215b688dd0d6c"
 pomSha256 = "1393089af1f9260c004c22313197cae9db1385ccbb30499a82d5a931d1762f66"
 dependencies = ["org.antlr:antlr4-runtime:4.11.1:jar:runtime", "org.checkerframework:checker-qual:3.21.2:jar:runtime"]
@@ -149,11 +184,11 @@ dependencies = ["org.antlr:antlr4-runtime:4.11.1:jar:runtime", "org.checkerframe
 [[package]]
 id = "org.yaml:snakeyaml"
 version = "2.3"
-source = "maven-central"
+source = "central"
 scope = "compile"
 direct = false
-jar = "org/yaml/snakeyaml/2.3/snakeyaml-2.3.jar"
-pom = "org/yaml/snakeyaml/2.3/snakeyaml-2.3.pom"
+jar = "blobs/v2/sha256/63a76fe66b652360bd4c2c107e6f0258daa7d4bb492008ba8c26fcd230ff9146/snakeyaml-2.3.jar"
+pom = "blobs/v2/sha256/0f5a265a06331b0049e352be32ca322de18b17f3d4dbb70635d40da692e3582f/snakeyaml-2.3.pom"
 jarSha256 = "63a76fe66b652360bd4c2c107e6f0258daa7d4bb492008ba8c26fcd230ff9146"
 pomSha256 = "0f5a265a06331b0049e352be32ca322de18b17f3d4dbb70635d40da692e3582f"
 dependencies = []

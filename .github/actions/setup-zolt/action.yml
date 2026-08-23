@@ -11,8 +11,8 @@ runs:
         java-version: '21'
 
     - name: Install pinned Zolt
-      uses: zoltsh/setup-zolt@e390469ef48c507fd952d23368b855d19fa94064 # v1.0.1
+      uses: zoltsh/setup-zolt@daaac64a8f2b58dd8ee0ab53b16085a64e20a0ad # v1.0.2
       with:
         channel: zap
-        version: 0.1.0-zap.20260804.89fc63944134
-        sha256: 3612c43851574bc988f5a113f7d646acf88aba1dedca3593f8f8f92c87162276
+        version: 0.1.0-zap.20260823.0ea7fe1473b4
+        sha256: 11c55e4117d55d1776c5eddca801b8e5f65cc9b16f2c5a8313b9f473547fdd57
