@@ -16,7 +16,9 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validateTrustedControllerResolution(root, errors);
         validateCandidateToolchainSync(root, errors);
         validateCandidateWorkflow(root, errors);
+        validatePreviewCandidateWorkflow(root, errors);
         validatePublishWorkflow(root, errors);
+        validatePreviewPublishWorkflow(root, errors);
         validateRecoveryWorkflow(root, errors);
         validatePublicationBackends(root, errors);
     }
@@ -111,7 +113,21 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
     }
 
     private static void validateCandidateToolchainSync(Path root, List<String> errors) {
-        Path path = root.resolve(RepositoryRules.ZAP_CANDIDATE_WORKFLOW);
+        validateCandidateToolchainSync(
+                root,
+                RepositoryRules.ZAP_CANDIDATE_WORKFLOW,
+                "zap candidate",
+                errors);
+        validateCandidateToolchainSync(
+                root,
+                RepositoryRules.PREVIEW_CANDIDATE_WORKFLOW,
+                "preview candidate",
+                errors);
+    }
+
+    private static void validateCandidateToolchainSync(
+            Path root, String workflowFile, String workflowName, List<String> errors) {
+        Path path = root.resolve(workflowFile);
         if (!Files.isRegularFile(path)) {
             return;
         }
@@ -127,7 +143,8 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 || distribution < checkout
                 || sync > distribution) {
             errors.add(
-                    "zap candidate build must sync the source-managed Java toolchain before distribution");
+                    workflowName
+                            + " build must sync the source-managed Java toolchain before distribution");
         }
     }
 
@@ -171,6 +188,61 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         }
     }
 
+    private static void validatePreviewCandidateWorkflow(Path root, List<String> errors) {
+        Path path = root.resolve(RepositoryRules.PREVIEW_CANDIDATE_WORKFLOW);
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String workflow = RepositoryFiles.read(path);
+        for (String fragment : RepositoryRules.PREVIEW_CANDIDATE_WORKFLOW_FRAGMENTS) {
+            if (!workflow.contains(fragment)) {
+                errors.add("preview candidate workflow is missing required contract: " + fragment);
+            }
+        }
+        if (workflow.contains("environment: channel-")) {
+            errors.add("preview candidate workflow must not use a publishing environment");
+        }
+
+        Path dispatcher = root.resolve("source-integration/dispatch-preview.yml");
+        if (!Files.isRegularFile(dispatcher)) {
+            return;
+        }
+        String sourceDispatch = RepositoryFiles.read(dispatcher);
+        for (String fragment : List.of(
+                "      - 'v*.*.*-*'",
+                "gh workflow run preview-candidate.yml",
+                "permission-actions: write",
+                "source_tag=${SOURCE_TAG}",
+                "Verify and resolve protected source tag",
+                ".verification.verified == true",
+                ".verification.reason == \"valid\"",
+                "SOURCE_SHA: ${{ steps.source.outputs.source_sha }}")) {
+            if (!sourceDispatch.contains(fragment)) {
+                errors.add("preview source dispatcher is missing required contract: " + fragment);
+            }
+        }
+        for (String fragment : RepositoryRules.FORBIDDEN_DISPATCHER_FRAGMENTS) {
+            if (sourceDispatch.contains(fragment)) {
+                errors.add("preview source dispatcher contains forbidden release authority: "
+                        + fragment);
+            }
+        }
+        String tagRules = RepositoryFiles.read(
+                root.resolve("source-integration/configure-preview-tag-rules"));
+        for (String fragment : List.of(
+                "target: \"tag\"",
+                "actor_type: \"User\"",
+                "include: [\"refs/tags/v*.*.*-*\"]",
+                "{type: \"creation\"}",
+                "{type: \"update\"}",
+                "{type: \"deletion\"}")) {
+            if (!tagRules.contains(fragment)) {
+                errors.add("preview source tag protection is missing required contract: "
+                        + fragment);
+            }
+        }
+    }
+
     private static void validatePublishWorkflow(Path root, List<String> errors) {
         Path path = root.resolve(RepositoryRules.ZAP_PUBLISH_WORKFLOW);
         if (!Files.isRegularFile(path)) {
@@ -198,6 +270,73 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 || publicVerification < metadata) {
             errors.add(
                     "zap publish workflow must publish immutable GitHub assets, publish the stable installer bootstrap, move metadata, then verify the public result");
+        }
+    }
+
+    private static void validatePreviewPublishWorkflow(Path root, List<String> errors) {
+        Path path = root.resolve(RepositoryRules.PREVIEW_PUBLISH_WORKFLOW);
+        if (!Files.isRegularFile(path)) {
+            return;
+        }
+        String workflow = RepositoryFiles.read(path);
+        for (String fragment : RepositoryRules.PREVIEW_PUBLISH_WORKFLOW_FRAGMENTS) {
+            if (!workflow.contains(fragment)) {
+                errors.add("preview publish workflow is missing required contract: " + fragment);
+            }
+        }
+        for (String fragment : RepositoryRules.FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS) {
+            if (workflow.contains(fragment)) {
+                errors.add("preview publish workflow contains forbidden candidate authority: "
+                        + fragment);
+            }
+        }
+        validateUnprivilegedJob(
+                workflow,
+                "\n  immutable-release-canary:\n",
+                "\n  promote:\n",
+                "preview immutable-release canary",
+                errors);
+        validateUnprivilegedPostPublicationSmoke(workflow, "preview publish", errors);
+
+        int immutable = workflow.indexOf("scripts/publish-github-release");
+        int canary = workflow.indexOf("\n  immutable-release-canary:\n");
+        int promote = workflow.indexOf("\n  promote:\n");
+        int metadata = workflow.indexOf("scripts/publish-channel-metadata", promote);
+        if (immutable < 0 || canary < immutable || promote < canary || metadata < promote) {
+            errors.add(
+                    "preview publish must create immutable assets, pass a secretless canary, then promote signed metadata");
+        }
+        String signingJob = workflow.substring(0, canary);
+        String promotionJob = workflow.substring(promote);
+        if (signingJob.contains("DO_SPACES_")
+                || signingJob.contains("AWS_ACCESS_KEY_ID")) {
+            errors.add("preview signing job must not receive metadata-promotion credentials");
+        }
+        if (promotionJob.contains("ZOLT_RELEASE_ED25519_PRIVATE_KEY")
+                || promotionJob.contains("sign-release-file")) {
+            errors.add("preview promotion job must not receive signing authority");
+        }
+    }
+
+    private static void validateUnprivilegedJob(
+            String workflow,
+            String startMarker,
+            String endMarker,
+            String jobName,
+            List<String> errors) {
+        int start = workflow.indexOf(startMarker);
+        int end = workflow.indexOf(endMarker, Math.max(0, start + startMarker.length()));
+        if (start < 0 || end < start) {
+            errors.add(jobName + " job boundary is missing");
+            return;
+        }
+        String job = workflow.substring(start, end);
+        if (!job.contains("permissions:\n      contents: read")
+                || job.contains("contents: write")
+                || job.contains("environment:")
+                || job.contains("secrets.")) {
+            errors.add(jobName
+                    + " must have read-only contents permission and no environment or secrets");
         }
     }
 
@@ -234,7 +373,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
     private static void validateUnprivilegedPostPublicationSmoke(
             String workflow, String workflowName, List<String> errors) {
         int smoke = workflow.indexOf("\n  post-publication-smoke:\n");
-        int candidateExecution = workflow.indexOf("ZOLT_INSTALL_ROOT=");
+        int candidateExecution = workflow.indexOf("ZOLT_INSTALL_ROOT=", Math.max(0, smoke));
         if (smoke < 0 || candidateExecution < smoke) {
             errors.add(workflowName
                     + " must execute the public candidate only in a separate post-publication smoke job");

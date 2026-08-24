@@ -117,6 +117,12 @@ required_files=(
     "$index_json"
     "$index_signature"
 )
+if [[ "$channel" == preview ]]; then
+    required_files+=(
+        "$version_directory/source-tag-ref.json"
+        "$version_directory/source-tag.json"
+    )
+fi
 for target in linux-arm64 linux-x64 macos-arm64 macos-x64; do
     archive="$version_directory/zolt-${version}-${target}.tar.gz"
     required_files+=("$archive" "$archive.sha256")

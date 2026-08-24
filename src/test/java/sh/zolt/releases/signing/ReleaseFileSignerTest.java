@@ -1,5 +1,6 @@
 package sh.zolt.releases.signing;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -12,8 +13,18 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import sh.zolt.releases.policy.ReleaseChannel;
 
 final class ReleaseFileSignerTest {
+    @Test
+    void selectsDistinctEnabledChannelKeys() {
+        assertDoesNotThrow(() -> new ReleaseFileSigner(ReleaseChannel.ZAP));
+        assertDoesNotThrow(() -> new ReleaseFileSigner(ReleaseChannel.PREVIEW));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ReleaseFileSigner(ReleaseChannel.STABLE));
+    }
+
     @Test
     void signsAndVerifiesExactBytes(@TempDir Path root)
             throws IOException, NoSuchAlgorithmException {

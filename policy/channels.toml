@@ -27,7 +27,7 @@ publish_central = false
 publish_homebrew = false
 
 [channel.preview]
-status = "disabled"
+status = "enabled"
 default = false
 source = "protected-prerelease-tag"
 human_gate = "tag-creation"

@@ -10,6 +10,7 @@ import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import sh.zolt.releases.core.ReleaseConstants;
+import sh.zolt.releases.policy.ReleaseChannel;
 
 public final class ReleaseFileSigner {
     private static final String PEM_HEADER = "-----BEGIN " + "PRIVATE KEY-----";
@@ -22,6 +23,10 @@ public final class ReleaseFileSigner {
         this(
                 ReleaseConstants.ZAP_SIGNING_KEY_ID,
                 ReleaseConstants.ZAP_SIGNING_PUBLIC_KEY);
+    }
+
+    public ReleaseFileSigner(ReleaseChannel channel) {
+        this(keyId(channel), publicKey(channel));
     }
 
     ReleaseFileSigner(String keyId, String x509PublicKeyBase64) {
@@ -86,5 +91,21 @@ public final class ReleaseFileSigner {
             throw new IllegalArgumentException(
                     "release signing private key is not valid Ed25519 PKCS#8", exception);
         }
+    }
+
+    private static String keyId(ReleaseChannel channel) {
+        return switch (channel) {
+            case ZAP -> ReleaseConstants.ZAP_SIGNING_KEY_ID;
+            case PREVIEW -> ReleaseConstants.PREVIEW_SIGNING_KEY_ID;
+            case STABLE -> throw new IllegalArgumentException("stable signing is not enabled");
+        };
+    }
+
+    private static String publicKey(ReleaseChannel channel) {
+        return switch (channel) {
+            case ZAP -> ReleaseConstants.ZAP_SIGNING_PUBLIC_KEY;
+            case PREVIEW -> ReleaseConstants.PREVIEW_SIGNING_PUBLIC_KEY;
+            case STABLE -> throw new IllegalArgumentException("stable signing is not enabled");
+        };
     }
 }

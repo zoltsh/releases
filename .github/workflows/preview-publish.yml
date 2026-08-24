@@ -1,0 +1,521 @@
+name: preview publish
+run-name: publish preview candidate ${{ github.event.workflow_run.id }}
+
+on:
+  workflow_run:
+    workflows: ["preview candidate"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: preview-publication
+  cancel-in-progress: false
+
+jobs:
+  publish-immutable:
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'workflow_dispatch' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == 'zoltsh/releases'
+      }}
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: channel-preview-signing
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+
+    steps:
+      - name: Check out exact trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Confirm trusted controller identity
+        env:
+          CANDIDATE_CONTROLLER_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_CONTROLLER_SHA"
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Resolve trusted controller
+        run: zolt resolve --locked --quiet --no-progress --color never
+
+      - name: Download candidate files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: zolt-preview-*
+          path: candidate-downloads
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          digest-mismatch: error
+
+      - name: Download source trust evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: zolt-source-ci-evidence-preview
+          path: candidate-downloads/zolt-source-ci-evidence-preview
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          digest-mismatch: error
+
+      - name: Arrange exact candidate inputs
+        run: |
+          set -euo pipefail
+          mkdir -p candidate evidence record
+          for target in linux-x64 linux-arm64 macos-x64 macos-arm64; do
+              mv "candidate-downloads/zolt-preview-${target}" "candidate/zolt-preview-${target}"
+          done
+          mv candidate-downloads/zolt-source-ci-evidence-preview/* evidence/
+          mv candidate-downloads/zolt-preview-release-record/release-record.json record/
+          rmdir candidate-downloads/zolt-source-ci-evidence-preview
+          rmdir candidate-downloads/zolt-preview-release-record
+          rmdir candidate-downloads
+
+      - name: Independently reverify source trust evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ZOLT_SOURCE_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source_repository="$(jq -er '.source.repository' record/release-record.json)"
+          source_sha="$(jq -er '.source.commit' record/release-record.json)"
+          source_run_id="$(jq -er '.source.workflowRunId' record/release-record.json)"
+          source_tag="$(jq -er '.source.tag' record/release-record.json)"
+          [[ "$source_repository" == "zoltsh/zolt" ]]
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$source_run_id" =~ ^[0-9]+$ ]]
+          [[ "$source_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$ ]]
+          zolt run --quiet -- verify-source-run \
+              --repository "$source_repository" \
+              --source-sha "$source_sha" \
+              --run-id "$source_run_id" \
+              --output out/reverified-source-run.json
+          cmp evidence/source-run.json out/reverified-source-run.json
+          gh api "repos/${source_repository}/git/ref/tags/${source_tag}" \
+              > out/reverified-tag-ref.json
+          tag_object_sha="$(jq -er 'select(.object.type == "tag") | .object.sha' \
+              out/reverified-tag-ref.json)"
+          gh api "repos/${source_repository}/git/tags/${tag_object_sha}" \
+              > out/reverified-tag.json
+          cmp evidence/source-tag-ref.json out/reverified-tag-ref.json
+          cmp evidence/source-tag.json out/reverified-tag.json
+          jq -e \
+              --arg tag "$source_tag" \
+              --arg sha "$source_sha" '
+              .tag == $tag and
+              .object.type == "commit" and
+              .object.sha == $sha and
+              .verification.verified == true and
+              .verification.reason == "valid"
+          ' out/reverified-tag.json >/dev/null
+
+      - name: Fetch current signed preview metadata
+        id: current-state
+        run: |
+          set -euo pipefail
+          mkdir -p current/channels current/releases prior
+          status="$(curl --proto '=https' --tlsv1.2 -sS \
+              -o current/channels/preview.json \
+              -w '%{http_code}' https://dist.zolt.sh/channels/preview.json || true)"
+          case "$status" in
+              200)
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/channels/preview.json.sig \
+                      https://dist.zolt.sh/channels/preview.json.sig
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/releases/preview.json \
+                      https://dist.zolt.sh/releases/preview.json
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/releases/preview.json.sig \
+                      https://dist.zolt.sh/releases/preview.json.sig
+                  zolt run --quiet -- verify-release-file --channel preview \
+                      --input current/channels/preview.json \
+                      --signature current/channels/preview.json.sig
+                  zolt run --quiet -- verify-release-file --channel preview \
+                      --input current/releases/preview.json \
+                      --signature current/releases/preview.json.sig
+                  cp -R current/channels current/releases prior/
+                  printf 'present\n' > prior/state
+                  printf 'present=true\n' >> "$GITHUB_OUTPUT"
+                  ;;
+              404)
+                  rm -f current/channels/preview.json
+                  for url in \
+                      https://dist.zolt.sh/channels/preview.json.sig \
+                      https://dist.zolt.sh/releases/preview.json \
+                      https://dist.zolt.sh/releases/preview.json.sig; do
+                      code="$(curl --proto '=https' --tlsv1.2 -sS \
+                          -o /dev/null -w '%{http_code}' "$url" || true)"
+                      test "$code" = 404
+                  done
+                  printf 'absent\n' > prior/state
+                  printf 'present=false\n' >> "$GITHUB_OUTPUT"
+                  ;;
+              *)
+                  printf 'error: preview channel lookup returned HTTP %s\n' "$status" >&2
+                  exit 1
+                  ;;
+          esac
+
+      - name: Revalidate and stage exact preview publication
+        env:
+          CANDIDATE_CONTROLLER_RUN_ID: ${{ github.event.workflow_run.id }}
+          CANDIDATE_CONTROLLER_SHA: ${{ github.event.workflow_run.head_sha }}
+          CURRENT_PRESENT: ${{ steps.current-state.outputs.present }}
+        run: |
+          set -euo pipefail
+          args=(
+              --release-record record/release-record.json
+              --source-evidence evidence/source-run.json
+              --candidates candidate
+              --expected-controller-sha "$CANDIDATE_CONTROLLER_SHA"
+              --expected-controller-run-id "$CANDIDATE_CONTROLLER_RUN_ID"
+              --output out/publication
+          )
+          if [[ "$CURRENT_PRESENT" == true ]]; then
+              args+=(
+                  --previous-channel current/channels/preview.json
+                  --previous-index current/releases/preview.json
+              )
+          fi
+          zolt run --quiet -- prepare-preview-publication "${args[@]}"
+
+      - name: Refuse a moved or untagged source commit
+        run: |
+          set -euo pipefail
+          candidate_commit="$(jq -er '.source.commit' record/release-record.json)"
+          source_tag="$(jq -er '.source.tag' record/release-record.json)"
+          git init source-history
+          git -C source-history remote add origin https://github.com/zoltsh/zolt.git
+          git -C source-history fetch --filter=blob:none --no-tags \
+              origin refs/heads/main:refs/remotes/origin/main
+          git -C source-history fetch --no-tags --depth=1 \
+              origin "refs/tags/${source_tag}:refs/tags/${source_tag}"
+          test "$(git -C source-history cat-file -t "refs/tags/${source_tag}")" = tag
+          test "$(git -C source-history rev-parse "refs/tags/${source_tag}^{commit}")" = \
+              "$candidate_commit"
+          git -C source-history merge-base --is-ancestor \
+              "$candidate_commit" refs/remotes/origin/main
+
+      - name: Stage exact source-tag installer
+        run: |
+          set -euo pipefail
+          candidate_commit="$(jq -er '.source.commit' record/release-record.json)"
+          version="$(jq -er '.version' record/release-record.json)"
+          version_directory="out/publication/artifacts/preview/$version"
+          installer="$version_directory/install.sh"
+          test "$(git -C source-history ls-tree "$candidate_commit" -- scripts/install-zolt \
+              | awk '{ print $1 " " $2 }')" = "100755 blob"
+          git -C source-history show "$candidate_commit:scripts/install-zolt" > "$installer"
+          chmod 0755 "$installer"
+          test "$(head -n 1 "$installer")" = '#!/bin/sh'
+          sh -n "$installer"
+          cp evidence/source-tag-ref.json "$version_directory/source-tag-ref.json"
+          cp evidence/source-tag.json "$version_directory/source-tag.json"
+
+      - name: Sign trusted preview metadata
+        env:
+          ZOLT_RELEASE_ED25519_PRIVATE_KEY: ${{ secrets.ZOLT_RELEASE_ED25519_PRIVATE_KEY }}
+        run: |
+          zolt run --quiet -- sign-release-file --channel preview \
+              --input out/publication/releases/preview.json \
+              --signature out/publication/releases/preview.json.sig \
+              --private-key-env ZOLT_RELEASE_ED25519_PRIVATE_KEY
+          zolt run --quiet -- sign-release-file --channel preview \
+              --input out/publication/channels/preview.json \
+              --signature out/publication/channels/preview.json.sig \
+              --private-key-env ZOLT_RELEASE_ED25519_PRIVATE_KEY
+          zolt run --quiet -- verify-release-file --channel preview \
+              --input out/publication/releases/preview.json \
+              --signature out/publication/releases/preview.json.sig
+          zolt run --quiet -- verify-release-file --channel preview \
+              --input out/publication/channels/preview.json \
+              --signature out/publication/channels/preview.json.sig
+
+      - name: Publish immutable GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_CONTROLLER_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          scripts/publish-github-release \
+              --channel preview \
+              --publication out/publication \
+              --target-sha "$CANDIDATE_CONTROLLER_SHA"
+
+      - name: Record immutable release identity
+        id: identity
+        run: |
+          set -euo pipefail
+          version="$(jq -er '.version' out/publication/channels/preview.json)"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'tag=zolt-preview-v%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve signed publication for promotion
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: preview-signed-publication
+          path: out/publication/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Preserve prior public state for compare-and-swap
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: preview-prior-state
+          path: prior/**
+          if-no-files-found: error
+          retention-days: 30
+
+  immutable-release-canary:
+    needs: publish-immutable
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Resolve trusted controller
+        run: zolt resolve --locked --quiet --no-progress --color never
+
+      - name: Install and execute exact immutable preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.publish-immutable.outputs.tag }}
+          EXPECTED_VERSION: ${{ needs.publish-immutable.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo zoltsh/releases \
+              --json isDraft,isImmutable,isPrerelease,tagName \
+              --jq ".tagName == \"$RELEASE_TAG\" and .isDraft == false and .isImmutable == true and .isPrerelease == true" \
+              | grep -Fx true >/dev/null
+          mkdir immutable
+          gh release download "$RELEASE_TAG" --repo zoltsh/releases \
+              --pattern install.sh \
+              --pattern channel-preview.json \
+              --pattern channel-preview.json.sig \
+              --dir immutable
+          zolt run --quiet -- verify-release-file --channel preview \
+              --input immutable/channel-preview.json \
+              --signature immutable/channel-preview.json.sig
+          install_root="$RUNNER_TEMP/immutable-preview"
+          channel_url="file://$PWD/immutable/channel-preview.json"
+          ZOLT_INSTALL_ROOT="$install_root" \
+              ZOLT_INSTALL_CHANNEL=preview \
+              ZOLT_INSTALL_CHANNEL_URL="$channel_url" \
+              ZOLT_INSTALL_UPDATE_CHANNEL_URL=https://dist.zolt.sh/channels/preview.json \
+              ZOLT_INSTALL_TARGET=linux-x64 \
+              sh immutable/install.sh
+          test "$("$install_root/bin/zolt" --version)" = "$EXPECTED_VERSION"
+          test "$(cat "$install_root/channel-url")" = \
+              'https://dist.zolt.sh/channels/preview.json'
+
+  promote:
+    needs:
+      - publish-immutable
+      - immutable-release-canary
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: channel-preview
+    outputs:
+      version: ${{ steps.public-verification.outputs.version }}
+
+    steps:
+      - name: Check out exact trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Set up trusted Zolt
+        uses: ./.github/actions/setup-zolt
+
+      - name: Resolve trusted controller
+        run: zolt resolve --locked --quiet --no-progress --color never
+
+      - name: Download signed publication
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: preview-signed-publication
+          path: publication
+          digest-mismatch: error
+
+      - name: Download prior public state
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: preview-prior-state
+          path: prior
+          digest-mismatch: error
+
+      - name: Reverify immutable release and signed bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.publish-immutable.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo zoltsh/releases \
+              --json isDraft,isImmutable,isPrerelease,tagName \
+              --jq ".tagName == \"$RELEASE_TAG\" and .isDraft == false and .isImmutable == true and .isPrerelease == true" \
+              | grep -Fx true >/dev/null
+          mkdir immutable
+          gh release download "$RELEASE_TAG" --repo zoltsh/releases \
+              --pattern channel-preview.json \
+              --pattern channel-preview.json.sig \
+              --pattern release-index-preview.json \
+              --pattern release-index-preview.json.sig \
+              --dir immutable
+          cmp publication/channels/preview.json immutable/channel-preview.json
+          cmp publication/channels/preview.json.sig immutable/channel-preview.json.sig
+          cmp publication/releases/preview.json immutable/release-index-preview.json
+          cmp publication/releases/preview.json.sig immutable/release-index-preview.json.sig
+          zolt run --quiet -- verify-release-file --channel preview \
+              --input publication/channels/preview.json \
+              --signature publication/channels/preview.json.sig
+          zolt run --quiet -- verify-release-file --channel preview \
+              --input publication/releases/preview.json \
+              --signature publication/releases/preview.json.sig
+          while IFS= read -r asset_url; do
+              curl --proto '=https' --tlsv1.2 -fsSIL "$asset_url" >/dev/null
+          done < <(jq -r '.artifacts[] | .archiveUrl, .checksumUrl' \
+              publication/channels/preview.json)
+
+      - name: Reverify prior public state
+        id: prior-state
+        run: |
+          set -euo pipefail
+          state="$(cat prior/state)"
+          case "$state" in
+              present)
+                  mkdir -p current/channels current/releases
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/channels/preview.json \
+                      https://dist.zolt.sh/channels/preview.json
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/channels/preview.json.sig \
+                      https://dist.zolt.sh/channels/preview.json.sig
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/releases/preview.json \
+                      https://dist.zolt.sh/releases/preview.json
+                  curl --proto '=https' --tlsv1.2 -fsSLo current/releases/preview.json.sig \
+                      https://dist.zolt.sh/releases/preview.json.sig
+                  cmp prior/channels/preview.json current/channels/preview.json
+                  cmp prior/channels/preview.json.sig current/channels/preview.json.sig
+                  cmp prior/releases/preview.json current/releases/preview.json
+                  cmp prior/releases/preview.json.sig current/releases/preview.json.sig
+                  zolt run --quiet -- verify-release-file --channel preview \
+                      --input current/channels/preview.json \
+                      --signature current/channels/preview.json.sig
+                  zolt run --quiet -- verify-release-file --channel preview \
+                      --input current/releases/preview.json \
+                      --signature current/releases/preview.json.sig
+                  printf 'present=true\n' >> "$GITHUB_OUTPUT"
+                  ;;
+              absent)
+                  status="$(curl --proto '=https' --tlsv1.2 -sS \
+                      -o /dev/null -w '%{http_code}' \
+                      https://dist.zolt.sh/channels/preview.json || true)"
+                  test "$status" = 404
+                  printf 'present=false\n' >> "$GITHUB_OUTPUT"
+                  ;;
+              *)
+                  printf 'error: invalid prior preview state %s\n' "$state" >&2
+                  exit 1
+                  ;;
+          esac
+
+      - name: Move signed preview channel metadata last
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET_ACCESS_KEY }}
+          CURRENT_PRESENT: ${{ steps.prior-state.outputs.present }}
+        run: |
+          set -euo pipefail
+          args=(--channel preview --publication publication)
+          if [[ "$CURRENT_PRESENT" == true ]]; then
+              args+=(--expected-current-channel current/channels/preview.json)
+          else
+              args+=(--expect-current-absent)
+          fi
+          scripts/publish-channel-metadata "${args[@]}"
+
+      - name: Verify public preview publication
+        id: public-verification
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for attempt in 1 2 3 4 5 6; do
+              if curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json \
+                      https://dist.zolt.sh/channels/preview.json \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-channel.json.sig \
+                      https://dist.zolt.sh/channels/preview.json.sig \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json \
+                      https://dist.zolt.sh/releases/preview.json \
+                  && curl --proto '=https' --tlsv1.2 -fsSLo out/public-index.json.sig \
+                      https://dist.zolt.sh/releases/preview.json.sig \
+                  && cmp -s publication/channels/preview.json out/public-channel.json \
+                  && cmp -s publication/channels/preview.json.sig out/public-channel.json.sig \
+                  && cmp -s publication/releases/preview.json out/public-index.json \
+                  && cmp -s publication/releases/preview.json.sig out/public-index.json.sig \
+                  && zolt run --quiet -- verify-release-file --channel preview \
+                      --input out/public-channel.json \
+                      --signature out/public-channel.json.sig \
+                  && zolt run --quiet -- verify-release-file --channel preview \
+                      --input out/public-index.json \
+                      --signature out/public-index.json.sig; then
+                  version="$(jq -er '.version' out/public-channel.json)"
+                  printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+                  cat out/public-channel.json >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+              fi
+              printf 'Public preview metadata has not converged after attempt %s\n' "$attempt"
+              sleep 10
+          done
+          printf 'error: public preview metadata did not converge to signed release bytes\n' >&2
+          exit 1
+
+  post-publication-smoke:
+    needs: promote
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Install and execute public preview without publication authority
+        env:
+          EXPECTED_VERSION: ${{ needs.promote.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$ ]]
+          tag="zolt-preview-v${EXPECTED_VERSION}"
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              -fsSLo public-installer.sh \
+              "https://github.com/zoltsh/releases/releases/download/${tag}/install.sh"
+          sh -n public-installer.sh
+          install_root="$RUNNER_TEMP/public-preview"
+          ZOLT_INSTALL_ROOT="$install_root" \
+              ZOLT_INSTALL_CHANNEL=preview \
+              ZOLT_INSTALL_CHANNEL_URL=https://dist.zolt.sh/channels/preview.json \
+              ZOLT_INSTALL_UPDATE_CHANNEL_URL=https://dist.zolt.sh/channels/preview.json \
+              ZOLT_INSTALL_TARGET=linux-x64 \
+              sh public-installer.sh
+          test "$("$install_root/bin/zolt" --version)" = "$EXPECTED_VERSION"
+          test "$(cat "$install_root/channel-url")" = \
+              'https://dist.zolt.sh/channels/preview.json'

@@ -47,6 +47,5 @@ jobs:
               --channel preview \
               --source-repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \
-              --source-tag "$SOURCE_TAG" \
-              --allow-disabled
-          printf 'Preview publication is disabled. This workflow validates intent only.\n' >> "$GITHUB_STEP_SUMMARY"
+              --source-tag "$SOURCE_TAG"
+          printf 'Preview intent is valid. This workflow never builds or publishes.\n' >> "$GITHUB_STEP_SUMMARY"

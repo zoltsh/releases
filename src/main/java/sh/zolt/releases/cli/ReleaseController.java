@@ -3,6 +3,7 @@ package sh.zolt.releases.cli;
 import java.util.Map;
 import sh.zolt.releases.cli.command.ComputeZapVersionCommand;
 import sh.zolt.releases.cli.command.PrepareZapPublicationCommand;
+import sh.zolt.releases.cli.command.PreparePreviewPublicationCommand;
 import sh.zolt.releases.cli.command.SignReleaseFileCommand;
 import sh.zolt.releases.cli.command.ValidateIntentCommand;
 import sh.zolt.releases.cli.command.ValidateRepositoryCommand;
@@ -13,6 +14,7 @@ import sh.zolt.releases.cli.command.WriteReleaseRecordCommand;
 public final class ReleaseController {
     private static final Map<String, ReleaseCommand> COMMANDS = Map.of(
             CliConstants.COMPUTE_ZAP_VERSION, new ComputeZapVersionCommand(),
+            CliConstants.PREPARE_PREVIEW_PUBLICATION, new PreparePreviewPublicationCommand(),
             CliConstants.PREPARE_ZAP_PUBLICATION, new PrepareZapPublicationCommand(),
             CliConstants.SIGN_RELEASE_FILE, new SignReleaseFileCommand(),
             CliConstants.VALIDATE_INTENT, new ValidateIntentCommand(),

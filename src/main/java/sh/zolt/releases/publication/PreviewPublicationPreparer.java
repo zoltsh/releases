@@ -2,23 +2,23 @@ package sh.zolt.releases.publication;
 
 import sh.zolt.releases.policy.ReleaseChannel;
 
-public final class ZapPublicationPreparer {
+public final class PreviewPublicationPreparer {
     private final CandidateReleaseValidator candidateValidator;
     private final ReleaseMetadataWriter metadataWriter;
 
-    public ZapPublicationPreparer() {
+    public PreviewPublicationPreparer() {
         this(new CandidateReleaseValidator(), new ReleaseMetadataWriter());
     }
 
-    ZapPublicationPreparer(
+    PreviewPublicationPreparer(
             CandidateReleaseValidator candidateValidator, ReleaseMetadataWriter metadataWriter) {
         this.candidateValidator = candidateValidator;
         this.metadataWriter = metadataWriter;
     }
 
-    public String prepare(ZapPublicationRequest request) {
+    public String prepare(PreviewPublicationRequest request) {
         ReleasePublicationRequest publication = new ReleasePublicationRequest(
-                ReleaseChannel.ZAP,
+                ReleaseChannel.PREVIEW,
                 request.releaseRecord(),
                 request.sourceEvidence(),
                 request.candidates(),

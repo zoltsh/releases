@@ -10,6 +10,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import sh.zolt.releases.core.ReleaseConstants;
+import sh.zolt.releases.policy.ReleaseChannel;
 
 public final class ReleaseSignatureVerifier {
     private final String keyId;
@@ -17,6 +18,10 @@ public final class ReleaseSignatureVerifier {
 
     public ReleaseSignatureVerifier() {
         this(ReleaseConstants.ZAP_SIGNING_KEY_ID, ReleaseConstants.ZAP_SIGNING_PUBLIC_KEY);
+    }
+
+    public ReleaseSignatureVerifier(ReleaseChannel channel) {
+        this(keyId(channel), publicKey(channel));
     }
 
     ReleaseSignatureVerifier(String keyId, String x509PublicKeyBase64) {
@@ -71,5 +76,21 @@ public final class ReleaseSignatureVerifier {
         } catch (GeneralSecurityException | IllegalArgumentException exception) {
             throw new IllegalArgumentException("invalid trusted Ed25519 public key", exception);
         }
+    }
+
+    private static String keyId(ReleaseChannel channel) {
+        return switch (channel) {
+            case ZAP -> ReleaseConstants.ZAP_SIGNING_KEY_ID;
+            case PREVIEW -> ReleaseConstants.PREVIEW_SIGNING_KEY_ID;
+            case STABLE -> throw new IllegalArgumentException("stable verification is not enabled");
+        };
+    }
+
+    private static String publicKey(ReleaseChannel channel) {
+        return switch (channel) {
+            case ZAP -> ReleaseConstants.ZAP_SIGNING_PUBLIC_KEY;
+            case PREVIEW -> ReleaseConstants.PREVIEW_SIGNING_PUBLIC_KEY;
+            case STABLE -> throw new IllegalArgumentException("stable verification is not enabled");
+        };
     }
 }

@@ -58,6 +58,8 @@ final class RepositoryRules {
             ".github/CODEOWNERS",
             ".github/actions/setup-zolt/action.yml",
             ".github/dependabot.yml",
+            ".github/workflows/preview-candidate.yml",
+            ".github/workflows/preview-publish.yml",
             ".github/workflows/validate.yml",
             ".github/workflows/zap-candidate.yml",
             ".github/workflows/zap-publish.yml",
@@ -79,6 +81,8 @@ final class RepositoryRules {
             "scripts/publish-installer-bootstrap",
             "scripts/publish-release-test",
             "source-integration/CODEOWNERS",
+            "source-integration/configure-preview-tag-rules",
+            "source-integration/dispatch-preview.yml",
             "source-integration/dispatch-zap.yml",
             "src/main/java/sh/zolt/releases/cli/ReleaseController.java",
             "src/main/java/sh/zolt/releases/core/ReleaseConstants.java",
@@ -87,9 +91,12 @@ final class RepositoryRules {
             "zolt.toml");
     static final List<String> CANDIDATE_WORKFLOW_FILES = List.of(
             ".github/actions/setup-zolt/action.yml",
+            ".github/workflows/preview-candidate.yml",
             ".github/workflows/zap-candidate.yml",
             "scripts/bootstrap.sh",
             "source-integration/CODEOWNERS",
+            "source-integration/configure-preview-tag-rules",
+            "source-integration/dispatch-preview.yml",
             "source-integration/dispatch-zap.yml");
     static final List<String> BOOTSTRAP_SECURITY_FRAGMENTS = List.of(
             "repos/${FULL_REPO}/actions/permissions\"",
@@ -115,6 +122,17 @@ final class RepositoryRules {
             "required_review_thread_resolution: true",
             "context: \"repository\", integration_id: 15368",
             "strict_required_status_checks_policy: true",
+            "name: \"release tag creation\"",
+            "name: \"immutable release tags\"",
+            "target: \"tag\"",
+            "actor_id: 15368",
+            "actor_type: \"Integration\"",
+            "include: [",
+            "\"refs/tags/zolt-zap-*\"",
+            "\"refs/tags/zolt-preview-*\"",
+            "\"refs/tags/zolt-v*\"",
+            "{type: \"creation\"}",
+            "{type: \"update\"}",
             "deployment_branch_policy[protected_branches]=false",
             "deployment_branch_policy[custom_branch_policies]=true",
             "deployment-branch-policies?per_page=100",
@@ -126,15 +144,22 @@ final class RepositoryRules {
             "prevent_self_review: true",
             "can_admins_bypass: false",
             ".can_admins_bypass == false",
-            "configure_environment_ref channel-preview tag 'zolt-preview-*'",
+            "configure_environment_ref channel-preview branch main",
+            "configure_environment_ref channel-preview-signing branch main",
             "configure_environment_ref channel-stable tag 'zolt-v*'");
     static final List<String> TRUSTED_CONTROLLER_WORKFLOWS = List.of(
             ".github/workflows/preview.yml",
+            ".github/workflows/preview-candidate.yml",
+            ".github/workflows/preview-publish.yml",
             ".github/workflows/stable.yml",
             ".github/workflows/zap-candidate.yml",
             ".github/workflows/zap-publish.yml",
             ".github/workflows/zap-recover.yml");
     static final String ZAP_CANDIDATE_WORKFLOW = ".github/workflows/zap-candidate.yml";
+    static final String PREVIEW_CANDIDATE_WORKFLOW =
+            ".github/workflows/preview-candidate.yml";
+    static final String PREVIEW_PUBLISH_WORKFLOW =
+            ".github/workflows/preview-publish.yml";
     static final String ZAP_PUBLISH_WORKFLOW = ".github/workflows/zap-publish.yml";
     static final String ZAP_RECOVER_WORKFLOW = ".github/workflows/zap-recover.yml";
     static final String ZOLT_SETUP_ACTION_FILE = ".github/actions/setup-zolt/action.yml";
@@ -154,6 +179,40 @@ final class RepositoryRules {
             "--expected-version",
             "--source-evidence",
             "./.github/actions/setup-zolt");
+    static final List<String> PREVIEW_CANDIDATE_WORKFLOW_FRAGMENTS = List.of(
+            "verify-source-run",
+            "git/ref/tags/${SOURCE_TAG}",
+            ".verification.verified == true",
+            "git -C source merge-base --is-ancestor",
+            "ZOLT_RELEASE_CHANNEL: preview",
+            "ZOLT_RELEASE_VERSION:",
+            "name: zolt-source-ci-evidence-preview",
+            "name: zolt-preview-${{ matrix.target }}",
+            "--channel preview",
+            "--source-tag \"$SOURCE_TAG\"",
+            "--source-evidence evidence/source-run.json",
+            "./.github/actions/setup-zolt");
+    static final List<String> PREVIEW_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
+            "workflow_run:",
+            "workflows: [\"preview candidate\"]",
+            "github.event.workflow_run.conclusion == 'success'",
+            "github.event.workflow_run.head_branch == 'main'",
+            "environment: channel-preview-signing",
+            "environment: channel-preview",
+            "prepare-preview-publication",
+            "sign-release-file --channel preview",
+            "verify-release-file --channel preview",
+            "scripts/publish-github-release",
+            "--channel preview",
+            "\n  immutable-release-canary:\n",
+            "needs: publish-immutable",
+            "\n  promote:\n",
+            "- immutable-release-canary",
+            "scripts/publish-channel-metadata",
+            "--expect-current-absent",
+            "\n  post-publication-smoke:\n",
+            "needs: promote",
+            "ZOLT_INSTALL_CHANNEL=preview");
     static final List<String> PUBLISH_WORKFLOW_FRAGMENTS = List.of(
             "workflow_run:",
             "workflows: [\"zap candidate\"]",

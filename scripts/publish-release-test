@@ -219,6 +219,12 @@ make_publication() {
     printf '{"channel":"%s","state":"candidate","version":"%s"}\n' "$channel" "$version" \
         >"$version_directory/release-record.json"
     printf '{}\n' >"$version_directory/source-run.json"
+    if [[ "$channel" == preview ]]; then
+        printf '{"object":{"type":"tag","sha":"tag-object"}}\n' \
+            >"$version_directory/source-tag-ref.json"
+        printf '{"tag":"v%s","object":{"type":"commit","sha":"source-commit"},"verification":{"verified":true,"reason":"valid"}}\n' \
+            "$version" >"$version_directory/source-tag.json"
+    fi
     {
         printf '{"channel":"%s","version":"%s","artifacts":[' "$channel" "$version"
         separator=""
@@ -289,7 +295,10 @@ scripts/publish-github-release \
     --channel preview \
     --publication "$preview_publication" \
     --target-sha "$target_sha" >/dev/null
-jq -e '.prerelease == true and .immutable == true' \
+jq -e '.prerelease == true and .immutable == true and
+    (.assets | length == 18) and
+    any(.assets[]; .name == "source-tag-ref.json") and
+    any(.assets[]; .name == "source-tag.json")' \
     "$github_store/releases/$preview_tag.json" >/dev/null
 jq -n --arg sha "$(printf 'b%.0s' {1..40})" '{object:{type:"commit",sha:$sha}}' \
     >"$github_store/tags/$preview_tag.json"
@@ -450,5 +459,34 @@ scripts/publish-channel-metadata \
     --channel zap \
     --publication "$zap_publication" \
     --expected-current-channel "$zap_publication/channels/zap.json" >/dev/null
+
+mkdir -p "$spaces_store/zolt-dist/releases"
+printf 'unexpected preview index\n' \
+    >"$spaces_store/zolt-dist/releases/preview.json"
+if scripts/publish-channel-metadata \
+    --channel preview \
+    --publication "$preview_publication" \
+    --expect-current-absent >"$temporary/preview-partial.log" 2>&1; then
+    printf 'error: first-preview publication accepted partially present metadata\n' >&2
+    exit 1
+fi
+grep -F 'expected preview metadata to be absent at releases/preview.json' \
+    "$temporary/preview-partial.log" >/dev/null
+rm "$spaces_store/zolt-dist/releases/preview.json"
+scripts/publish-channel-metadata \
+    --channel preview \
+    --publication "$preview_publication" \
+    --expect-current-absent >/dev/null
+cmp "$preview_publication/channels/preview.json" \
+    "$spaces_store/zolt-dist/channels/preview.json"
+if scripts/publish-channel-metadata \
+    --channel preview \
+    --publication "$preview_publication" \
+    --expect-current-absent >"$temporary/preview-present.log" 2>&1; then
+    printf 'error: first-preview publication accepted an existing channel\n' >&2
+    exit 1
+fi
+grep -F 'expected preview metadata to be absent at channels/preview.json' \
+    "$temporary/preview-present.log" >/dev/null
 
 printf 'GitHub Release, installer bootstrap, and channel publisher tests passed\n'

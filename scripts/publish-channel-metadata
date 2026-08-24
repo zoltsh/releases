@@ -7,6 +7,7 @@ cd "$root"
 channel=""
 publication=""
 expected_current_channel=""
+expect_current_absent=false
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --channel)
@@ -21,6 +22,10 @@ while [[ "$#" -gt 0 ]]; do
             expected_current_channel="${2:?missing value for --expected-current-channel}"
             shift 2
             ;;
+        --expect-current-absent)
+            expect_current_absent=true
+            shift
+            ;;
         *)
             printf 'error: unknown argument %s\n' "$1" >&2
             exit 2
@@ -28,8 +33,10 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$channel" || -z "$publication" || -z "$expected_current_channel" ]]; then
-    printf 'usage: scripts/publish-channel-metadata --channel <zap|preview|stable> --publication <directory> --expected-current-channel <file>\n' >&2
+if [[ -z "$channel" || -z "$publication" \
+    || ( -z "$expected_current_channel" && "$expect_current_absent" != "true" ) \
+    || ( -n "$expected_current_channel" && "$expect_current_absent" == "true" ) ]]; then
+    printf 'usage: scripts/publish-channel-metadata --channel <zap|preview|stable> --publication <directory> (--expected-current-channel <file> | --expect-current-absent)\n' >&2
     exit 2
 fi
 case "$channel" in
@@ -53,12 +60,15 @@ case "$channel" in
         exit 2
         ;;
 esac
-if [[ ! -d "$publication" || ! -f "$expected_current_channel" ]]; then
-    printf 'error: publication directory and expected current channel must exist\n' >&2
+if [[ ! -d "$publication" \
+    || ( -n "$expected_current_channel" && ! -f "$expected_current_channel" ) ]]; then
+    printf 'error: publication directory and expected current channel must exist when provided\n' >&2
     exit 2
 fi
 publication="$(cd "$publication" && pwd)"
-expected_current_channel="$(cd "$(dirname "$expected_current_channel")" && pwd)/$(basename "$expected_current_channel")"
+if [[ -n "$expected_current_channel" ]]; then
+    expected_current_channel="$(cd "$(dirname "$expected_current_channel")" && pwd)/$(basename "$expected_current_channel")"
+fi
 
 curl_cli="${ZOLT_PUBLISH_CURL:-curl}"
 if ! command -v "$curl_cli" >/dev/null 2>&1; then
@@ -178,6 +188,20 @@ publish_metadata() {
 require_current_channel_unchanged() {
     local downloaded
     downloaded="$(mktemp)"
+    if [[ "$expect_current_absent" == "true" ]]; then
+        local status
+        status="$(spaces_curl \
+            --output "$downloaded" \
+            --write-out '%{http_code}' \
+            "$(spaces_url "channels/$channel.json")" 2>/dev/null || true)"
+        rm -f "$downloaded"
+        if [[ "$status" != "404" ]]; then
+            printf 'error: expected %s channel metadata to be absent; found HTTP %s\n' \
+                "$channel" "${status:-unknown}" >&2
+            exit 1
+        fi
+        return
+    fi
     if ! download_object "channels/$channel.json" "$downloaded"; then
         rm -f "$downloaded"
         printf 'error: could not read the current %s channel metadata\n' "$channel" >&2
@@ -191,7 +215,32 @@ require_current_channel_unchanged() {
     rm -f "$downloaded"
 }
 
-require_current_channel_unchanged
+require_all_metadata_absent() {
+    local downloaded key status
+    for key in \
+        "channels/$channel.json" \
+        "channels/$channel.json.sig" \
+        "releases/$channel.json" \
+        "releases/$channel.json.sig"; do
+        downloaded="$(mktemp)"
+        status="$(spaces_curl \
+            --output "$downloaded" \
+            --write-out '%{http_code}' \
+            "$(spaces_url "$key")" 2>/dev/null || true)"
+        rm -f "$downloaded"
+        if [[ "$status" != "404" ]]; then
+            printf 'error: expected %s metadata to be absent at %s; found HTTP %s\n' \
+                "$channel" "$key" "${status:-unknown}" >&2
+            exit 1
+        fi
+    done
+}
+
+if [[ "$expect_current_absent" == "true" ]]; then
+    require_all_metadata_absent
+else
+    require_current_channel_unchanged
+fi
 publish_metadata "$index_signature" "releases/$channel.json.sig" "text/plain"
 publish_metadata "$index_json" "releases/$channel.json" "application/json"
 require_current_channel_unchanged

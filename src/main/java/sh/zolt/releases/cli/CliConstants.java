@@ -3,6 +3,7 @@ package sh.zolt.releases.cli;
 public final class CliConstants {
     public static final String COMPUTE_ZAP_VERSION = "compute-zap-version";
     public static final String PREPARE_ZAP_PUBLICATION = "prepare-zap-publication";
+    public static final String PREPARE_PREVIEW_PUBLICATION = "prepare-preview-publication";
     public static final String SIGN_RELEASE_FILE = "sign-release-file";
     public static final String VALIDATE_INTENT = "validate-intent";
     public static final String VERIFY_SOURCE_RUN = "verify-source-run";

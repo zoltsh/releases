@@ -117,6 +117,31 @@ configure_recovery_protection() {
         || fail "channel-zap-recovery must require only ${RECOVERY_REVIEWER}, prevent self-review, and disallow administrator bypass"
 }
 
+configure_ruleset() {
+    local name="$1"
+    local payload="$2"
+    local rulesets ruleset_count ruleset_id
+
+    rulesets="$(gh api "repos/${FULL_REPO}/rulesets?includes_parents=false")"
+    ruleset_count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' \
+        <<<"$rulesets")"
+    case "$ruleset_count" in
+        0)
+            gh api --method POST "repos/${FULL_REPO}/rulesets" \
+                --input "$payload" >/dev/null
+            ;;
+        1)
+            ruleset_id="$(jq -r --arg name "$name" \
+                '.[] | select(.name == $name) | .id' <<<"$rulesets")"
+            gh api --method PUT "repos/${FULL_REPO}/rulesets/${ruleset_id}" \
+                --input "$payload" >/dev/null
+            ;;
+        *)
+            fail "multiple repository rulesets are named ${name}"
+            ;;
+    esac
+}
+
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required: https://cli.github.com/"
 command -v jq >/dev/null 2>&1 || fail "jq is required: https://jqlang.github.io/jq/"
@@ -188,7 +213,11 @@ gh api --method PUT "repos/${FULL_REPO}/actions/permissions/selected-actions" \
     -f 'patterns_allowed[]=zoltsh/setup-zolt@*' >/dev/null
 
 ruleset_payload="$(mktemp "${TMPDIR:-/tmp}/zolt-releases-main-ruleset.XXXXXX")"
-trap 'rm -f "$ruleset_payload"' EXIT
+release_tag_creation_payload="$(mktemp \
+    "${TMPDIR:-/tmp}/zolt-releases-tag-creation-ruleset.XXXXXX")"
+immutable_release_tags_payload="$(mktemp \
+    "${TMPDIR:-/tmp}/zolt-releases-immutable-tags-ruleset.XXXXXX")"
+trap 'rm -f "$ruleset_payload" "$release_tag_creation_payload" "$immutable_release_tags_payload"' EXIT
 jq -n '
     {
         name: "main",
@@ -229,27 +258,64 @@ jq -n '
     }
 ' >"$ruleset_payload"
 
-rulesets="$(gh api "repos/${FULL_REPO}/rulesets?includes_parents=false")"
-ruleset_count="$(jq '[.[] | select(.name == "main")] | length' <<<"$rulesets")"
-case "$ruleset_count" in
-    0)
-        gh api --method POST "repos/${FULL_REPO}/rulesets" \
-            --input "$ruleset_payload" >/dev/null
-        ;;
-    1)
-        ruleset_id="$(jq -r '.[] | select(.name == "main") | .id' <<<"$rulesets")"
-        gh api --method PUT "repos/${FULL_REPO}/rulesets/${ruleset_id}" \
-            --input "$ruleset_payload" >/dev/null
-        ;;
-    *)
-        fail "multiple repository rulesets are named main"
-        ;;
-esac
+configure_ruleset main "$ruleset_payload"
+
+jq -n '
+    {
+        name: "release tag creation",
+        target: "tag",
+        enforcement: "active",
+        bypass_actors: [{
+            actor_id: 15368,
+            actor_type: "Integration",
+            bypass_mode: "always"
+        }],
+        conditions: {
+            ref_name: {
+                include: [
+                    "refs/tags/zolt-zap-*",
+                    "refs/tags/zolt-preview-*",
+                    "refs/tags/zolt-v*"
+                ],
+                exclude: []
+            }
+        },
+        rules: [{type: "creation"}]
+    }
+' >"$release_tag_creation_payload"
+
+configure_ruleset "release tag creation" "$release_tag_creation_payload"
+
+jq -n '
+    {
+        name: "immutable release tags",
+        target: "tag",
+        enforcement: "active",
+        bypass_actors: [],
+        conditions: {
+            ref_name: {
+                include: [
+                    "refs/tags/zolt-zap-*",
+                    "refs/tags/zolt-preview-*",
+                    "refs/tags/zolt-v*"
+                ],
+                exclude: []
+            }
+        },
+        rules: [
+            {type: "update"},
+            {type: "deletion"}
+        ]
+    }
+' >"$immutable_release_tags_payload"
+
+configure_ruleset "immutable release tags" "$immutable_release_tags_payload"
 
 configure_environment_ref channel-zap branch main
 configure_environment_ref channel-zap-recovery branch main
 configure_recovery_protection
-configure_environment_ref channel-preview tag 'zolt-preview-*'
+configure_environment_ref channel-preview branch main
+configure_environment_ref channel-preview-signing branch main
 configure_environment_ref channel-stable tag 'zolt-v*'
 
 immutable_enabled="$(gh api "repos/${FULL_REPO}/immutable-releases" \
@@ -277,9 +343,10 @@ Still required in GitHub:
   4. Add one trusted reviewer to channel-stable and prevent self-review before stable publication.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
   6. Keep channel-zap-recovery approval-gated; the bootstrap configures ${RECOVERY_REVIEWER} and prevents self-review.
-  7. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
-  8. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
-  9. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
+  7. Confirm the release-tags ruleset allows only GitHub Actions to create immutable release tags.
+  8. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
+  9. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
+ 10. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.
 
 No publication secret is required for candidate builds.
 EOF

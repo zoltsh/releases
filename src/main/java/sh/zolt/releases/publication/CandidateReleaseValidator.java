@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import sh.zolt.releases.core.ReleaseConstants;
 import sh.zolt.releases.github.SourceCiConstants;
 import sh.zolt.releases.io.JsonSupport;
+import sh.zolt.releases.policy.ReleaseChannel;
 import sh.zolt.releases.record.CandidateArtifacts;
 import sh.zolt.releases.record.FileDigests;
 import sh.zolt.releases.record.ReleaseRecordValidator;
@@ -25,6 +26,9 @@ final class CandidateReleaseValidator {
     private static final Pattern ZAP_VERSION = Pattern.compile(
             "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)"
                     + "-zap\\.[0-9]{8}\\.[0-9a-f]{12}$");
+    private static final Pattern PREVIEW_VERSION = Pattern.compile(
+            "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)"
+                    + "-(?:alpha|beta|rc)\\.(?:0|[1-9][0-9]*)$");
 
     private final ReleaseRecordValidator releaseRecordValidator;
 
@@ -36,17 +40,18 @@ final class CandidateReleaseValidator {
         this.releaseRecordValidator = releaseRecordValidator;
     }
 
-    ValidatedCandidateRelease validate(ZapPublicationRequest request) {
+    ValidatedCandidateRelease validate(ReleasePublicationRequest request) {
         Path recordPath = regularFile(request.releaseRecord(), "release record");
         Path evidencePath = regularFile(request.sourceEvidence(), "source CI evidence");
         JsonNode record = JsonSupport.read(recordPath);
         releaseRecordValidator.validate(record);
 
-        requireText(record, "channel", ReleaseConstants.ZAP_CHANNEL, "release record channel");
+        requireText(record, "channel", request.channel().id(), "release record channel");
         requireText(record, "state", ReleaseConstants.CANDIDATE_STATE, "release record state");
         String version = text(record, "version", "release record");
-        if (!ZAP_VERSION.matcher(version).matches()) {
-            throw new IllegalArgumentException("invalid zap version in release record: " + version);
+        if (!versionPattern(request.channel()).matcher(version).matches()) {
+            throw new IllegalArgumentException(
+                    "invalid " + request.channel().id() + " version in release record: " + version);
         }
         String createdAt = text(record, "createdAt", "release record");
         parseInstant(createdAt, "release record createdAt");
@@ -62,10 +67,7 @@ final class CandidateReleaseValidator {
             throw new IllegalArgumentException("invalid source commit in release record");
         }
         String sourceRunId = text(source, "workflowRunId", "release record source");
-        if (!version.endsWith("." + sourceSha.substring(0, 12))) {
-            throw new IllegalArgumentException(
-                    "zap version does not end with the release record source commit prefix");
-        }
+        validateSourceIdentity(request.channel(), source, version, sourceSha);
 
         JsonNode controller = object(record, "controller", "release record");
         requireText(
@@ -120,6 +122,7 @@ final class CandidateReleaseValidator {
             throw new IllegalArgumentException("candidate release has no builder metadata");
         }
         return new ValidatedCandidateRelease(
+                request.channel(),
                 version,
                 sourceSha,
                 createdAt,
@@ -127,6 +130,33 @@ final class CandidateReleaseValidator {
                 evidencePath,
                 combinedBuilder,
                 Map.copyOf(archives));
+    }
+
+    private static Pattern versionPattern(ReleaseChannel channel) {
+        return switch (channel) {
+            case ZAP -> ZAP_VERSION;
+            case PREVIEW -> PREVIEW_VERSION;
+            case STABLE -> throw new IllegalArgumentException("stable publication is not enabled");
+        };
+    }
+
+    private static void validateSourceIdentity(
+            ReleaseChannel channel, JsonNode source, String version, String sourceSha) {
+        switch (channel) {
+            case ZAP -> {
+                if (!version.endsWith("." + sourceSha.substring(0, 12))) {
+                    throw new IllegalArgumentException(
+                            "zap version does not end with the release record source commit prefix");
+                }
+                requireNull(source, "tag", "zap release record source");
+            }
+            case PREVIEW -> requireText(
+                    source,
+                    "tag",
+                    "v" + version,
+                    "preview release record source tag");
+            case STABLE -> throw new IllegalArgumentException("stable publication is not enabled");
+        }
     }
 
     private static Map<String, ArtifactIdentity> artifactIdentities(
@@ -292,6 +322,13 @@ final class CandidateReleaseValidator {
         if (!expected.equals(actual)) {
             throw new IllegalArgumentException(
                     description + " must be \"" + expected + "\", found \"" + actual + "\"");
+        }
+    }
+
+    private static void requireNull(JsonNode parent, String field, String description) {
+        JsonNode value = parent.get(field);
+        if (value != null && !value.isNull()) {
+            throw new IllegalArgumentException(description + " must not set " + field);
         }
     }
 

@@ -88,6 +88,12 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
         if (!Set.of("candidate", "enabled").contains(zapStatus)) {
             errors.add("zap must be in candidate or enabled state");
         }
+        requireString(
+                preview,
+                "status",
+                "enabled",
+                "preview must be enabled only with its reviewed publication lane",
+                errors);
         requireLong(
                 stable,
                 "approval_count",
@@ -246,6 +252,8 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
         TomlTable zapRecoveryEnvironment =
                 table(environments, "channel_zap_recovery", errors);
         TomlTable previewEnvironment = table(environments, "channel_preview", errors);
+        TomlTable previewSigningEnvironment =
+                table(environments, "channel_preview_signing", errors);
         TomlTable stableEnvironment = table(environments, "channel_stable", errors);
         requireLong(
                 zapEnvironment,
@@ -298,14 +306,38 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
         requireString(
                 previewEnvironment,
                 "deployment_ref_type",
-                "tag",
-                "channel-preview deployments must use a tag policy",
+                "branch",
+                "channel-preview promotion must use a branch policy",
                 errors);
         requireString(
                 previewEnvironment,
                 "deployment_ref_pattern",
-                "zolt-preview-*",
-                "channel-preview deployments must use protected preview tags",
+                "main",
+                "channel-preview promotion must use trusted controller main",
+                errors);
+        requireLong(
+                previewEnvironment,
+                "reviewers",
+                0L,
+                "channel-preview promotion must not require a second human gate",
+                errors);
+        requireString(
+                previewSigningEnvironment,
+                "deployment_ref_type",
+                "branch",
+                "channel-preview-signing must use a branch policy",
+                errors);
+        requireString(
+                previewSigningEnvironment,
+                "deployment_ref_pattern",
+                "main",
+                "channel-preview-signing must use trusted controller main",
+                errors);
+        requireLong(
+                previewSigningEnvironment,
+                "reviewers",
+                0L,
+                "channel-preview-signing must not require a second human gate",
                 errors);
         requireString(
                 stableEnvironment,

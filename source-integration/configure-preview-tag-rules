@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE_REPOSITORY="${ZOLT_SOURCE_REPOSITORY:-zoltsh/zolt}"
+TAG_CREATOR="${ZOLT_PREVIEW_TAG_CREATOR:-}"
+CREATION_RULESET_NAME="preview source tag creation"
+IMMUTABLE_RULESET_NAME="immutable preview source tags"
+
+fail() {
+    printf 'error: %s\n' "$1" >&2
+    exit 1
+}
+
+command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required"
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+gh auth status >/dev/null 2>&1 || fail "authenticate GitHub CLI with: gh auth login"
+
+if [[ -z "$TAG_CREATOR" ]]; then
+    TAG_CREATOR="$(gh api user --jq .login)"
+fi
+tag_creator_id="$(gh api "users/${TAG_CREATOR}" --jq .id 2>/dev/null || true)"
+[[ "$tag_creator_id" =~ ^[0-9]+$ ]] \
+    || fail "preview tag creator ${TAG_CREATOR} is not a GitHub user"
+
+upsert_ruleset() {
+    local name="$1"
+    local payload="$2"
+    local rulesets count ruleset_id
+
+    rulesets="$(gh api "repos/${SOURCE_REPOSITORY}/rulesets?includes_parents=false")"
+    count="$(jq --arg name "$name" \
+        '[.[] | select(.name == $name)] | length' <<<"$rulesets")"
+    case "$count" in
+        0)
+            gh api --method POST "repos/${SOURCE_REPOSITORY}/rulesets" \
+                --input "$payload" >/dev/null
+            ;;
+        1)
+            ruleset_id="$(jq -r --arg name "$name" \
+                '.[] | select(.name == $name) | .id' <<<"$rulesets")"
+            gh api --method PUT "repos/${SOURCE_REPOSITORY}/rulesets/${ruleset_id}" \
+                --input "$payload" >/dev/null
+            ;;
+        *)
+            fail "multiple source rulesets are named ${name}"
+            ;;
+    esac
+}
+
+read_ruleset() {
+    local name="$1"
+    local ruleset_id
+    ruleset_id="$(gh api "repos/${SOURCE_REPOSITORY}/rulesets?includes_parents=false" \
+        --jq ".[] | select(.name == \"${name}\") | .id")"
+    gh api "repos/${SOURCE_REPOSITORY}/rulesets/${ruleset_id}"
+}
+
+creation_payload="$(mktemp \
+    "${TMPDIR:-/tmp}/zolt-preview-source-tag-creation.XXXXXX")"
+immutable_payload="$(mktemp \
+    "${TMPDIR:-/tmp}/zolt-preview-source-tag-immutable.XXXXXX")"
+trap 'rm -f "$creation_payload" "$immutable_payload"' EXIT
+jq -n --argjson creator_id "$tag_creator_id" '
+    {
+        name: "preview source tag creation",
+        target: "tag",
+        enforcement: "active",
+        bypass_actors: [{
+            actor_id: $creator_id,
+            actor_type: "User",
+            bypass_mode: "always"
+        }],
+        conditions: {
+            ref_name: {
+                include: ["refs/tags/v*.*.*-*"],
+                exclude: []
+            }
+        },
+        rules: [{type: "creation"}]
+    }
+' >"$creation_payload"
+
+upsert_ruleset "$CREATION_RULESET_NAME" "$creation_payload"
+
+creation_state="$(read_ruleset "$CREATION_RULESET_NAME")"
+jq -e --argjson creator_id "$tag_creator_id" '
+    .target == "tag" and
+    .enforcement == "active" and
+    .conditions.ref_name.include == ["refs/tags/v*.*.*-*"] and
+    .conditions.ref_name.exclude == [] and
+    .bypass_actors == [{
+        actor_id: $creator_id,
+        actor_type: "User",
+        bypass_mode: "always"
+    }] and
+    [.rules[].type] == ["creation"]
+' <<<"$creation_state" >/dev/null \
+    || fail "live preview source tag creation ruleset differs from policy"
+
+jq -n '
+    {
+        name: "immutable preview source tags",
+        target: "tag",
+        enforcement: "active",
+        bypass_actors: [],
+        conditions: {
+            ref_name: {
+                include: ["refs/tags/v*.*.*-*"],
+                exclude: []
+            }
+        },
+        rules: [
+            {type: "update"},
+            {type: "deletion"}
+        ]
+    }
+' >"$immutable_payload"
+
+upsert_ruleset "$IMMUTABLE_RULESET_NAME" "$immutable_payload"
+immutable_state="$(read_ruleset "$IMMUTABLE_RULESET_NAME")"
+jq -e '
+    .target == "tag" and
+    .enforcement == "active" and
+    .conditions.ref_name.include == ["refs/tags/v*.*.*-*"] and
+    .conditions.ref_name.exclude == [] and
+    .bypass_actors == [] and
+    ([.rules[].type] | sort) == ["deletion", "update"]
+' <<<"$immutable_state" >/dev/null \
+    || fail "live preview source tag immutability ruleset differs from policy"
+
+printf 'Protected %s prerelease tags for creation by %s and immutable thereafter.\n' \
+    "$SOURCE_REPOSITORY" "$TAG_CREATOR"

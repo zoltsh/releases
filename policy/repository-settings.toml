@@ -42,8 +42,13 @@ deployment_ref_pattern = "main"
 
 [environments.channel_preview]
 reviewers = 0
-deployment_ref_type = "tag"
-deployment_ref_pattern = "zolt-preview-*"
+deployment_ref_type = "branch"
+deployment_ref_pattern = "main"
+
+[environments.channel_preview_signing]
+reviewers = 0
+deployment_ref_type = "branch"
+deployment_ref_pattern = "main"
 
 [environments.channel_stable]
 reviewers = 1

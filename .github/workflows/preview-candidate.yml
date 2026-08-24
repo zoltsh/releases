@@ -1,5 +1,5 @@
-name: zap candidate
-run-name: zap candidate ${{ inputs.source_sha }}
+name: preview candidate
+run-name: preview candidate ${{ inputs.source_tag }}
 
 on:
   workflow_dispatch:
@@ -9,11 +9,11 @@ on:
         required: true
         type: string
       source_sha:
-        description: Exact 40-character source commit on main
+        description: Exact 40-character source commit
         required: true
         type: string
-      source_run_id:
-        description: Successful source CI workflow run that dispatched this build
+      source_tag:
+        description: Protected signed prerelease tag, such as v0.1.0-alpha.1
         required: true
         type: string
 
@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: zap-candidate-${{ inputs.source_repository }}-${{ inputs.source_sha }}
+  group: preview-candidate-${{ inputs.source_repository }}-${{ inputs.source_tag }}
   cancel-in-progress: false
 
 jobs:
@@ -31,7 +31,8 @@ jobs:
     outputs:
       source_repository: ${{ steps.intent.outputs.source_repository }}
       source_sha: ${{ steps.intent.outputs.source_sha }}
-      source_run_id: ${{ steps.intent.outputs.source_run_id }}
+      source_run_id: ${{ steps.source-run.outputs.source_run_id }}
+      source_tag: ${{ steps.intent.outputs.source_tag }}
       version: ${{ steps.version.outputs.version }}
 
     steps:
@@ -46,76 +47,128 @@ jobs:
       - name: Resolve trusted controller
         run: zolt resolve --locked --quiet --no-progress --color never
 
-      - name: Validate zap intent
+      - name: Validate preview intent
         id: intent
         env:
           SOURCE_REPOSITORY: ${{ inputs.source_repository }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
         run: |
-          set -eu
+          set -euo pipefail
           zolt run --quiet -- validate-intent \
-              --channel zap \
+              --channel preview \
               --source-repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \
-              --source-run-id "$SOURCE_RUN_ID"
+              --source-tag "$SOURCE_TAG"
           {
               printf 'source_repository=%s\n' "$SOURCE_REPOSITORY"
               printf 'source_sha=%s\n' "$SOURCE_SHA"
-              printf 'source_run_id=%s\n' "$SOURCE_RUN_ID"
+              printf 'source_tag=%s\n' "$SOURCE_TAG"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Independently verify source CI evidence
+      - name: Verify protected signed source tag
         env:
+          GH_TOKEN: ${{ github.token }}
           SOURCE_REPOSITORY: ${{ inputs.source_repository }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh api "repos/${SOURCE_REPOSITORY}/git/ref/tags/${SOURCE_TAG}" > out/source-tag-ref.json
+          tag_object_sha="$(jq -er '
+              select(.object.type == "tag") | .object.sha
+          ' out/source-tag-ref.json)"
+          gh api "repos/${SOURCE_REPOSITORY}/git/tags/${tag_object_sha}" > out/source-tag.json
+          jq -e \
+              --arg tag "$SOURCE_TAG" \
+              --arg sha "$SOURCE_SHA" '
+              .tag == $tag and
+              .object.type == "commit" and
+              .object.sha == $sha and
+              .verification.verified == true and
+              .verification.reason == "valid"
+          ' out/source-tag.json >/dev/null
+
+      - name: Find and independently verify source CI
+        id: source-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
           ZOLT_SOURCE_READ_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          gh api \
+              "repos/${SOURCE_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&head_sha=${SOURCE_SHA}&per_page=100" \
+              > out/source-runs.json
+          source_run_id="$(jq -er \
+              --arg sha "$SOURCE_SHA" '
+              [.workflow_runs[] |
+                select(
+                  .name == "ci" and
+                  .path == ".github/workflows/ci.yml" and
+                  .event == "push" and
+                  .head_branch == "main" and
+                  .head_sha == $sha and
+                  .status == "completed" and
+                  .conclusion == "success")]
+              | sort_by(.created_at, .id)
+              | last
+              | .id
+          ' out/source-runs.json)"
           zolt run --quiet -- verify-source-run \
               --repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \
-              --run-id "$SOURCE_RUN_ID" \
+              --run-id "$source_run_id" \
               --output out/source-run.json
+          printf 'source_run_id=%s\n' "$source_run_id" >> "$GITHUB_OUTPUT"
           cat out/source-run.json >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Fetch exact source commit
+      - name: Fetch exact protected source tag
         env:
           SOURCE_REPOSITORY: ${{ inputs.source_repository }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
         run: |
           set -euo pipefail
           git init source
           git -C source remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
-          git -C source fetch --no-tags --depth=256 origin refs/heads/main:refs/remotes/origin/main
-          if ! git -C source cat-file -e "${SOURCE_SHA}^{commit}" 2>/dev/null; then
-              git -C source fetch --no-tags --depth=1 origin "$SOURCE_SHA"
-          fi
+          git -C source fetch --no-tags --depth=256 \
+              origin refs/heads/main:refs/remotes/origin/main
+          git -C source fetch --no-tags --depth=1 \
+              origin "refs/tags/${SOURCE_TAG}:refs/tags/${SOURCE_TAG}"
+          test "$(git -C source cat-file -t "refs/tags/${SOURCE_TAG}")" = tag
+          test "$(git -C source rev-parse "refs/tags/${SOURCE_TAG}^{commit}")" = "$SOURCE_SHA"
           git -C source merge-base --is-ancestor "$SOURCE_SHA" refs/remotes/origin/main
           git -C source checkout --detach "$SOURCE_SHA"
           test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
 
-      - name: Compute one deterministic zap version
+      - name: Derive exact preview version
         id: version
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
         run: |
           set -euo pipefail
-          source_created_at="$(jq -er '.runCreatedAt' out/source-run.json)"
-          version="$(zolt run --quiet -- compute-zap-version \
-              --project source/zolt.toml \
-              --source-sha "$SOURCE_SHA" \
-              --source-created-at "$source_created_at")"
+          version="${SOURCE_TAG#v}"
+          base_version="$(awk -F '"' "
+              /^\\[/ { section = \$0 }
+              section == \"[workspace.project]\" && /^version = / { print \$2; exit }
+          " source/zolt.toml | sed "s/-SNAPSHOT$//")"
+          test "${version%%-*}" = "$base_version"
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
-          printf 'Zap version: \x60%s\x60\n' "$version" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Preview version: \x60%s\x60\n' "$version" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Preserve source CI evidence
+      - name: Preserve source trust evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zolt-source-ci-evidence
-          path: out/source-run.json
+          name: zolt-source-ci-evidence-preview
+          path: |
+            out/source-run.json
+            out/source-tag-ref.json
+            out/source-tag.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   build:
     name: build ${{ matrix.target }}
@@ -138,6 +191,7 @@ jobs:
     env:
       SOURCE_REPOSITORY: ${{ needs.validate-intent.outputs.source_repository }}
       SOURCE_SHA: ${{ needs.validate-intent.outputs.source_sha }}
+      ZOLT_RELEASE_CHANNEL: preview
       ZOLT_RELEASE_TARGET: ${{ matrix.target }}
       ZOLT_RELEASE_VERSION: ${{ needs.validate-intent.outputs.version }}
 
@@ -154,7 +208,8 @@ jobs:
           set -euo pipefail
           git init source
           git -C source remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
-          git -C source fetch --no-tags --depth=256 origin refs/heads/main:refs/remotes/origin/main
+          git -C source fetch --no-tags --depth=256 \
+              origin refs/heads/main:refs/remotes/origin/main
           if ! git -C source cat-file -e "${SOURCE_SHA}^{commit}" 2>/dev/null; then
               git -C source fetch --no-tags --depth=1 origin "$SOURCE_SHA"
           fi
@@ -166,17 +221,17 @@ jobs:
         working-directory: source
         run: scripts/bootstrap-zolt-jvm --no-progress toolchain sync
 
-      - name: Build and verify native zap distribution
+      - name: Build and verify native preview distribution
         working-directory: source
         run: scripts/zap-distribution --target "$ZOLT_RELEASE_TARGET"
 
       - name: Upload candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zolt-zap-${{ matrix.target }}
-          path: source/apps/zolt/target/release/zap/${{ needs.validate-intent.outputs.version }}/**
+          name: zolt-preview-${{ matrix.target }}
+          path: source/apps/zolt/target/release/preview/${{ needs.validate-intent.outputs.version }}/**
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
   record:
     name: candidate record
@@ -204,15 +259,15 @@ jobs:
       - name: Download exact candidate artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          pattern: zolt-zap-*
+          pattern: zolt-preview-*
           path: candidate
           merge-multiple: false
           digest-mismatch: error
 
-      - name: Download source CI evidence
+      - name: Download source trust evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: zolt-source-ci-evidence
+          name: zolt-source-ci-evidence-preview
           path: evidence
           digest-mismatch: error
 
@@ -221,13 +276,15 @@ jobs:
           SOURCE_REPOSITORY: ${{ needs.validate-intent.outputs.source_repository }}
           SOURCE_SHA: ${{ needs.validate-intent.outputs.source_sha }}
           SOURCE_RUN_ID: ${{ needs.validate-intent.outputs.source_run_id }}
+          SOURCE_TAG: ${{ needs.validate-intent.outputs.source_tag }}
           EXPECTED_VERSION: ${{ needs.validate-intent.outputs.version }}
         run: |
           zolt run --quiet -- write-release-record \
-              --channel zap \
+              --channel preview \
               --source-repository "$SOURCE_REPOSITORY" \
               --source-sha "$SOURCE_SHA" \
               --source-run-id "$SOURCE_RUN_ID" \
+              --source-tag "$SOURCE_TAG" \
               --expected-version "$EXPECTED_VERSION" \
               --source-evidence evidence/source-run.json \
               --controller-sha "$GITHUB_SHA" \
@@ -239,7 +296,7 @@ jobs:
       - name: Upload candidate release record
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zolt-zap-release-record
+          name: zolt-preview-release-record
           path: out/release-record.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
