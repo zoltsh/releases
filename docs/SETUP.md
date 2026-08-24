@@ -37,8 +37,10 @@ The script:
 - makes the default Actions token read-only
 - restricts Actions to reviewed, full-SHA dependencies
 - protects `main` with the reviewed solo-maintainer repository rules
-- creates `channel-zap`, `channel-zap-recovery`, `channel-preview`, and
-  `channel-stable` with exact deployment-ref policies
+- protects all controller release-tag namespaces so only GitHub Actions can create
+  immutable tags
+- creates `channel-zap`, `channel-zap-recovery`, `channel-preview-signing`,
+  `channel-preview`, and `channel-stable` with exact deployment-ref policies
 - requires one named reviewer for Zap recovery, prevents self-review, and disables
   administrator bypass
 - enables immutable GitHub Releases for every channel
@@ -76,7 +78,7 @@ merge gate in solo-maintainer mode. When another trusted maintainer has write ac
 raise the policy to one approval and require CODEOWNER and latest-push approval. Require
 two approvals only when two independent reviewers are actually available.
 
-Before publication, protect these release tag patterns:
+The bootstrap protects these release tag patterns:
 
 ```text
 zolt-zap-*
@@ -84,7 +86,8 @@ zolt-preview-*
 zolt-v*
 ```
 
-Only the trusted publisher may create them. Do not allow updates or deletion.
+Only GitHub Actions may create them. Updates and deletion are restricted for everyone;
+publication code must verify and reuse an existing immutable release on retry.
 
 ## 4. Restrict GitHub Actions
 
@@ -111,25 +114,21 @@ They must not come from workflow input or the candidate commit.
 | --- | --- | ---: | --- |
 | `channel-zap` | branch `main` | 0 | Automatic zap publication |
 | `channel-zap-recovery` | branch `main` | 1 | Operator-approved zap rollback |
-| `channel-preview` | tag `zolt-preview-*` | 0 | Preview publication after a protected tag |
+| `channel-preview-signing` | branch `main` | 0 | Sign metadata and create the immutable preview |
+| `channel-preview` | branch `main` | 0 | Promote already-signed preview metadata after canary |
 | `channel-stable` | tag `zolt-v*` | 1 | Stable publication after approval |
 
 Set `ZOLT_RECOVERY_REVIEWER` before running the bootstrap when the authenticated GitHub
 owner should not be the recovery reviewer. The bootstrap requires that one user,
 prevents self-review, and disables administrator bypass for `channel-zap-recovery`.
 For `channel-stable`, prevent self-review and disable administrator bypass where
-available. The bootstrap replaces each environment's deployment branch and tag rules
-with the single pattern shown above; a workflow from any other ref cannot receive that
-environment's secrets.
+available. The bootstrap replaces each environment's deployment rules with the single
+ref shown above; a workflow from any other ref cannot receive that environment's
+secrets.
 
-Zap now has a reviewed publisher and is enabled in `policy/channels.toml`. Preview and
-stable must not receive secrets until their own publishers are implemented and
-reviewed.
-
-The current preview and stable workflows are manual placeholders. Before enabling
-either channel, make its workflow run from the matching protected tag or revisit its
-environment ref policy; a manual dispatch from `main` does not satisfy the tag patterns
-shown above.
+Zap and preview have reviewed publishers and are enabled in `policy/channels.toml`.
+Stable remains disabled. Preview deliberately splits authority: the signing environment
+has no Spaces credential, and the promotion environment has no signing key.
 
 ## 6. Connect `zoltsh/zolt`
 
@@ -154,6 +153,7 @@ Copy:
 
 ```text
 source-integration/dispatch-zap.yml -> zoltsh/zolt/.github/workflows/dispatch-zap.yml
+source-integration/dispatch-preview.yml -> zoltsh/zolt/.github/workflows/dispatch-preview.yml
 source-integration/CODEOWNERS        -> zoltsh/zolt/.github/CODEOWNERS
 ```
 
@@ -166,6 +166,17 @@ before candidate builds can run as written.
 
 After source `ci` passes on `main`, the dispatcher sends the repository name, commit
 SHA, and CI run ID here. This repository checks all three again before building.
+
+Protect preview source tags by running:
+
+```sh
+source-integration/configure-preview-tag-rules
+```
+
+By default the authenticated GitHub user is the only bypass actor. Set
+`ZOLT_PREVIEW_TAG_CREATOR` to a different trusted release engineer. The ruleset covers
+`v*.*.*-*`; the source dispatcher and controller additionally require a valid signed
+annotated tag in the exact `vMAJOR.MINOR.PATCH-(alpha|beta|rc).N` shape.
 
 ### What the App can do
 
@@ -237,7 +248,41 @@ The workflow uses its repository-scoped `GITHUB_TOKEN` to create the immutable G
 Release. It fixes the GitHub repository, Space, region, endpoint, metadata origin, and
 key ID in reviewed code. They are not workflow inputs or secrets.
 
-## 8. Start automatic zap publication
+## 8. Configure protected preview publication
+
+Preview uses a distinct Ed25519 key whose public half is bundled in Zolt and this
+controller as `zolt-preview-2026`. Add only its unencrypted PKCS#8 private PEM to
+`channel-preview-signing`:
+
+```text
+ZOLT_RELEASE_ED25519_PRIVATE_KEY
+```
+
+Add only the narrow `zolt-dist` credential to `channel-preview`:
+
+```text
+DO_SPACES_ACCESS_KEY_ID
+DO_SPACES_SECRET_ACCESS_KEY
+```
+
+GitHub cannot reveal existing environment secret values, so provision the same narrow
+Spaces credential again from its trusted source. Do not copy it into the signing
+environment, and do not copy the preview private key into the promotion environment.
+
+The source commit must already be on `zoltsh/zolt` `main` with successful source CI.
+The release engineer then creates and pushes a signed annotated tag, for example:
+
+```sh
+git tag -s v0.1.0-alpha.1 -m 'v0.1.0-alpha.1'
+git push origin v0.1.0-alpha.1
+```
+
+That single human action dispatches a four-target candidate. Trusted controller `main`
+reverifies the tag and CI, signs and publishes an immutable prerelease, runs a
+secretless immutable canary, promotes the signed metadata with compare-and-swap, and
+then runs a public preview smoke.
+
+## 9. Start automatic zap publication
 
 After the publisher is merged to `main` and the three environment secrets exist,
 rerun the source CI dispatcher or allow the next successful `zoltsh/zolt` `main` CI
@@ -255,26 +300,30 @@ https://dist.zolt.sh/releases/zap.json
 https://dist.zolt.sh/releases/zap.json.sig
 ```
 
-Add preview publication next and stable publication last. Do not enable either by
-copying the zap workflow and changing its channel name.
-
 Do not turn stable on by copying the zap workflow and changing its channel name.
 
-## 9. Verify the configuration
+## 10. Verify the configuration
 
 Before any public release:
 
 - [ ] Immutable releases are enabled.
 - [ ] Branch and tag rules are active.
+- [ ] Controller release tags can be created only by GitHub Actions and cannot move or
+      be deleted.
+- [ ] Source prerelease tags can be created only by the named release engineer and
+      cannot move or be deleted.
 - [ ] `channel-zap` permits only the `main` branch.
 - [ ] `channel-zap-recovery` permits only `main`, requires one reviewer, prevents
       self-review, and disallows administrator bypass.
-- [ ] Preview and stable permit only their protected release-tag patterns.
+- [ ] Both preview environments permit only trusted controller `main`.
 - [ ] Stable has one reviewer and prevents self-review.
 - [ ] Zap and preview have no reviewers.
 - [ ] `channel-zap` has the narrow `zolt-dist` Spaces key and matching Ed25519 private key.
 - [ ] `channel-zap-recovery` has only the narrow `zolt-dist` Spaces key.
+- [ ] `channel-preview-signing` has only the matching preview Ed25519 private key.
+- [ ] `channel-preview` has only the narrow `zolt-dist` Spaces key.
 - [ ] No release archive is uploaded to `zolt-dist`.
 - [ ] `https://dist.zolt.sh/install.sh` matches `scripts/install-bootstrap` exactly.
 - [ ] The live zap channel and release index verify with `zolt-release-2026`.
+- [ ] Preview intent validation succeeds without creating a tag or publishing files.
 - [ ] `scripts/check` passes.

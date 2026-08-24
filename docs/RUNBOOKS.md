@@ -10,9 +10,8 @@ Use these procedures when a release fails or release authority may be compromise
 > deployment IDs before changing anything.
 
 > [!IMPORTANT]
-> Zap publication uses immutable GitHub Releases plus the stable bootstrap and metadata
-> in `zolt-dist`. Add the real owner and incident-contact details before enabling preview
-> or stable.
+> Zap and preview publication use immutable GitHub Releases plus signed metadata in
+> `zolt-dist`. Add the real owner and incident-contact details before enabling stable.
 
 ## First response
 
@@ -49,11 +48,16 @@ Use these procedures when a release fails or release authority may be compromise
 
 ## Preview failure
 
-1. Stop before changing the preview channel when possible.
-2. Do not replace files in an immutable prerelease.
-3. Fix the problem and publish a new prerelease version.
-4. If needed, publish a new signed channel file with a higher sequence number that
-   points to the previous good release.
+1. Stop before changing the preview channel when possible. A candidate or immutable
+   canary failure leaves public metadata untouched.
+2. Do not replace files in an immutable prerelease or move its source tag.
+3. If immutable publication succeeded but promotion failed, rerun the same trusted
+   publication. It must verify and reuse the exact release and signed bytes before
+   retrying the compare-and-swap promotion.
+4. If the candidate itself is wrong, fix the problem and publish a higher prerelease
+   version; never rebuild the same version with different bytes.
+5. Preserve source-tag JSON, source CI evidence, the release record, signed metadata,
+   canary logs, and public object state.
 
 ## Stable failure
 

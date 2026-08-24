@@ -45,7 +45,7 @@ archive, and records the signed channel used by `zolt self update`.
 | Channel | Best for | Origin |
 | :--- | :--- | :--- |
 | `stable` | Recommended releases; not enabled yet | Signed pointer at `dist.zolt.sh` |
-| `preview` | Alpha, beta, and release candidates; not enabled yet | Signed pointer at `dist.zolt.sh` |
+| `preview` | Protected alpha, beta, and release candidates | Signed pointer at `dist.zolt.sh` |
 | `zap` | The latest healthy build from `main` | [Signed pointer at `dist.zolt.sh`](https://dist.zolt.sh/channels/zap.json) |
 
 > [!TIP]
@@ -61,13 +61,14 @@ archive, and records the signed channel used by `zolt self update`.
 | Release manifest | Version, builder metadata, and archive identities |
 | Release record | Source, workflow, controller, and candidate file identities |
 | Source CI evidence | The exact successful source run used for the build |
+| Preview tag evidence | The protected signed source tag and GitHub verification result |
 
 Release files for every channel live in immutable
 [GitHub Releases](https://github.com/zoltsh/releases/releases). DigitalOcean stores the
 small stable bootstrap plus signed channel and release-index files that tell clients
-which GitHub Release is current. Preview and stable publication remain disabled until
-their build and approval workflows are complete; they use the same GitHub asset
-contract as zap.
+which GitHub Release is current. Preview publication is enabled through a protected
+source tag, isolated signing, a secretless immutable-release canary, and separate
+metadata promotion. Stable publication remains disabled.
 
 ## About this repository
 

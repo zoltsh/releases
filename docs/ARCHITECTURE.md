@@ -7,8 +7,9 @@ This document describes how Zolt turns trusted source into immutable releases wi
 giving candidate code access to publication credentials.
 
 > [!NOTE]
-> Automatic zap publication stores immutable files in GitHub Releases and moves signed
-> metadata at `dist.zolt.sh` last. Preview and stable publication remain disabled.
+> Automatic zap publication and protected preview publication store immutable files in
+> GitHub Releases and move signed metadata at `dist.zolt.sh` last. Stable publication
+> remains disabled.
 
 ## Contents
 
@@ -75,8 +76,9 @@ uses one public origin:
 https://dist.zolt.sh
 ```
 
-The stable and preview workflows are not enabled. Before either is enabled, its build,
-signing, and approval path must be completed and reviewed.
+Preview is enabled through a protected, signed prerelease tag and a reviewed four-target
+publication lane. Stable remains disabled until its build, signing, and approval path is
+completed and reviewed.
 
 The public installer command uses a stable `dist.zolt.sh` bootstrap. Its reviewed bytes
 pin an exact immutable GitHub Release installer and SHA-256; that immutable installer
@@ -103,8 +105,9 @@ in the signed channel point directly at exact immutable GitHub Release assets.
 
 DigitalOcean object versioning is optional. Each GitHub Release contains immutable
 copies of the signed channel and index produced for that publication, so operators can
-reconstruct channel state after an accidental metadata overwrite. Preview and stable
-will use the same storage split when their policy status changes from `disabled`.
+reconstruct channel state after an accidental metadata overwrite. Preview uses the same
+storage split and changes its channel only after its immutable release passes a
+secretless canary. Stable will use it after stable publication is enabled.
 
 ## Roles and access
 
@@ -211,9 +214,11 @@ zolt-v*
 
 Only the trusted publisher may create them. Do not allow updates or deletion.
 
-Protect source `v*` tags as well. Require signed tags and allow only release authority
-to create, update, delete, or bypass their rules. Zap uses its exact source commit
-instead of a source `v*` tag.
+Protect source prerelease tags matching `v*.*.*-*` as well. Only the named release
+engineer may bypass their creation rule, and updates and deletion remain restricted.
+The source dispatcher and controller both require a GitHub-verified signed annotated
+tag that peels to the exact requested commit. Zap uses its exact source commit instead
+of a source tag.
 
 ## Trusted build tool
 
@@ -244,7 +249,8 @@ Every controller command calls the installed `zolt` binary directly.
 
 ## Source handoff
 
-The source repository uses a GitHub App to start the fixed zap workflow here. The App
+The source repository uses a GitHub App to start the fixed zap or preview candidate
+workflow here. The App
 has Actions read/write access to `zoltsh/releases` and no Contents, Secrets,
 Environments, or release-channel access.
 
@@ -259,6 +265,10 @@ This repository does not trust the trigger by itself. It checks:
 - the event was a push to `main`
 - the run completed for the requested commit
 - every required test, coverage, smoke, and managed-toolchain job passed
+
+Preview additionally checks the protected source tag through the GitHub Git database
+API, requires a valid signature, peels the annotated tag to a commit on source `main`,
+and preserves the tag objects as immutable release evidence.
 
 ## Job boundaries
 
@@ -287,7 +297,7 @@ Candidate code never runs with signing or storage credentials for any channel.
 - records every candidate file digest and size
 - writes the release record
 
-### Publication job
+### Publication jobs
 
 - starts on a fresh GitHub-hosted runner
 - checks out only trusted controller code at an exact commit
@@ -295,9 +305,14 @@ Candidate code never runs with signing or storage credentials for any channel.
 - does not execute the candidate binary
 - downloads candidates by exact workflow and artifact identity
 - checks every digest again
-- signs trusted metadata
-- publishes the immutable release
+- signs trusted metadata and publishes the immutable release
 - changes the channel file last
+
+Preview splits those privileges further. Its signing job has only the preview private
+key and GitHub release permission. A fresh read-only job installs and executes the
+immutable prerelease. Only after that can a separate promotion job receive the Spaces
+credential; promotion can verify and upload the already-signed bytes but cannot sign
+new metadata.
 
 ### Post-publication smoke job
 
@@ -314,18 +329,22 @@ preview or stable release by gaining access to publication credentials.
 
 ## Signing model
 
-The deployed zap contract uses one Ed25519 key:
+The deployed zap and preview contracts use separate Ed25519 keys:
 
 ```text
 key id: zolt-release-2026
+preview key id: zolt-preview-2026
 sidecar version: zolt-ed25519-v1
 ```
 
 The matching public key is bundled in Zolt and in this trusted controller. The private
-key exists only as `ZOLT_RELEASE_ED25519_PRIVATE_KEY` in the `channel-zap` GitHub
-environment. The publisher accepts an unencrypted PKCS#8 PEM, signs the exact file
-bytes, and verifies the new signature against the bundled public key before any upload.
-A missing or wrong private key therefore fails before publication.
+zap key exists only as `ZOLT_RELEASE_ED25519_PRIVATE_KEY` in the `channel-zap` GitHub
+environment. The preview key uses the same secret name only inside
+`channel-preview-signing`; the separate `channel-preview` environment has storage
+credentials but no signing key. Publishers accept an unencrypted PKCS#8 PEM, sign the
+exact file bytes, and verify each new signature against the channel's bundled public
+key before any upload. A missing or wrong private key therefore fails before
+publication.
 
 Each mutable JSON file has a text sidecar:
 
@@ -413,15 +432,23 @@ channel secret or write token is available.
 
 ```text
 protected prerelease tag
-  -> check that the tag still points to the requested commit
-  -> build and verify without credentials
-  -> publish an immutable preview release
-  -> sign the preview channel file
+  -> require a valid signed annotated tag and peel it to the requested commit
+  -> independently require successful source main CI for that commit
+  -> build and verify four targets without credentials
+  -> reverify the tag, CI evidence, source ancestry, and candidate bytes
+  -> sign preview metadata with no storage credential
+  -> publish an immutable preview prerelease and source-tag evidence
+  -> install and execute the immutable release in a fresh secretless canary
+  -> promote the already-signed metadata with no signing authority
   -> change the preview channel last
+  -> install and execute the public preview in a fresh read-only smoke
 ```
 
-Creating the protected tag is the human action. Preview initially needs no extra
-environment approval. Repeating the same request must not create a second release.
+Creating the protected signed tag is the human action. Preview needs no extra
+environment approval. First publication proves all four preview metadata objects are
+absent; later publications compare the public signed state before moving it. Repeating
+the same request must verify and reuse the same immutable release rather than creating
+a second one.
 
 ### Stable publication
 
