@@ -218,6 +218,26 @@ final class RepositoryValidatorTest {
     }
 
     @Test
+    void nonPublisherWorkflowMustRemainContentsReadOnly(@TempDir Path root)
+            throws IOException {
+        Path workflow = root.resolve(".github/workflows/validate.yml");
+        Files.createDirectories(workflow.getParent());
+        Files.writeString(
+                workflow,
+                """
+                permissions:
+                  contents: write
+                """);
+
+        List<String> errors = new ArrayList<>();
+        new RepositoryAutomationCheck().validate(root, errors);
+
+        assertTrue(errors.contains(
+                "only trusted publication workflows may grant contents:write: "
+                        + ".github/workflows/validate.yml"));
+    }
+
+    @Test
     void zapPublisherMustUseFixedUnapprovedZapEnvironment(@TempDir Path root)
             throws IOException {
         Path workflow = root.resolve(".github/workflows/zap-publish.yml");

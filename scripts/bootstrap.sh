@@ -213,11 +213,9 @@ gh api --method PUT "repos/${FULL_REPO}/actions/permissions/selected-actions" \
     -f 'patterns_allowed[]=zoltsh/setup-zolt@*' >/dev/null
 
 ruleset_payload="$(mktemp "${TMPDIR:-/tmp}/zolt-releases-main-ruleset.XXXXXX")"
-release_tag_creation_payload="$(mktemp \
-    "${TMPDIR:-/tmp}/zolt-releases-tag-creation-ruleset.XXXXXX")"
 immutable_release_tags_payload="$(mktemp \
     "${TMPDIR:-/tmp}/zolt-releases-immutable-tags-ruleset.XXXXXX")"
-trap 'rm -f "$ruleset_payload" "$release_tag_creation_payload" "$immutable_release_tags_payload"' EXIT
+trap 'rm -f "$ruleset_payload" "$immutable_release_tags_payload"' EXIT
 jq -n '
     {
         name: "main",
@@ -259,32 +257,6 @@ jq -n '
 ' >"$ruleset_payload"
 
 configure_ruleset main "$ruleset_payload"
-
-jq -n '
-    {
-        name: "release tag creation",
-        target: "tag",
-        enforcement: "active",
-        bypass_actors: [{
-            actor_id: 15368,
-            actor_type: "Integration",
-            bypass_mode: "always"
-        }],
-        conditions: {
-            ref_name: {
-                include: [
-                    "refs/tags/zolt-zap-*",
-                    "refs/tags/zolt-preview-*",
-                    "refs/tags/zolt-v*"
-                ],
-                exclude: []
-            }
-        },
-        rules: [{type: "creation"}]
-    }
-' >"$release_tag_creation_payload"
-
-configure_ruleset "release tag creation" "$release_tag_creation_payload"
 
 jq -n '
     {
@@ -343,7 +315,7 @@ Still required in GitHub:
   4. Add one trusted reviewer to channel-stable and prevent self-review before stable publication.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
   6. Keep channel-zap-recovery approval-gated; the bootstrap configures ${RECOVERY_REVIEWER} and prevents self-review.
-  7. Confirm the release-tags ruleset allows only GitHub Actions to create immutable release tags.
+  7. Confirm only reviewed publication workflows grant contents:write and release tags cannot move or be deleted.
   8. Confirm each environment allows only its bootstrap-managed branch or tag pattern.
   9. Confirm immutable releases show as enabled; bootstrap enables them through the GitHub API.
  10. Configure the dispatcher GitHub App and install source-integration/ in zoltsh/zolt.

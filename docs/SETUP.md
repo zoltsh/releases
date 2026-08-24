@@ -37,8 +37,7 @@ The script:
 - makes the default Actions token read-only
 - restricts Actions to reviewed, full-SHA dependencies
 - protects `main` with the reviewed solo-maintainer repository rules
-- protects all controller release-tag namespaces so only GitHub Actions can create
-  immutable tags
+- protects all controller release-tag namespaces from updates and deletion
 - creates `channel-zap`, `channel-zap-recovery`, `channel-preview-signing`,
   `channel-preview`, and `channel-stable` with exact deployment-ref policies
 - requires one named reviewer for Zap recovery, prevents self-review, and disables
@@ -86,8 +85,12 @@ zolt-preview-*
 zolt-v*
 ```
 
-Only GitHub Actions may create them. Updates and deletion are restricted for everyone;
-publication code must verify and reuse an existing immutable release on retry.
+Only the reviewed zap and preview publication workflows grant `contents: write`; every
+other controller workflow remains read-only. GitHub does not permit the global Actions
+integration as a repository-ruleset bypass actor, so creation authority is enforced by
+those reviewed workflow permissions. The no-bypass tag ruleset prevents updates and
+deletion for everyone. Publication code must verify and reuse an existing immutable
+release on retry.
 
 ## 4. Restrict GitHub Actions
 
@@ -308,8 +311,8 @@ Before any public release:
 
 - [ ] Immutable releases are enabled.
 - [ ] Branch and tag rules are active.
-- [ ] Controller release tags can be created only by GitHub Actions and cannot move or
-      be deleted.
+- [ ] Only reviewed publication workflows grant controller `contents: write`, and the
+      no-bypass release-tag ruleset prevents updates and deletion.
 - [ ] Source prerelease tags can be created only by the named release engineer and
       cannot move or be deleted.
 - [ ] `channel-zap` permits only the `main` branch.

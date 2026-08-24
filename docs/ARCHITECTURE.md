@@ -212,7 +212,11 @@ zolt-preview-*
 zolt-v*
 ```
 
-Only the trusted publisher may create them. Do not allow updates or deletion.
+Only the reviewed zap and preview publication workflows grant `contents: write`, so
+normal controller workflows cannot create release tags. GitHub does not allow its
+global Actions integration to act as a repository-ruleset bypass, so the no-bypass tag
+ruleset enforces the part GitHub can express exactly: release tags cannot be updated or
+deleted after a trusted publisher creates them.
 
 Protect source prerelease tags matching `v*.*.*-*` as well. Only the named release
 engineer may bypass their creation rule, and updates and deletion remain restricted.

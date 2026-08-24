@@ -3,6 +3,7 @@ package sh.zolt.releases.repository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import sh.zolt.releases.io.ProjectFiles;
 
@@ -65,6 +66,16 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                 errors.add(
                         "workflow must declare top-level permissions: "
                                 + ProjectFiles.relative(root, path));
+            }
+            String relative = ProjectFiles.relative(root, path);
+            if (path.toString().endsWith(".yml")
+                    && RepositoryFiles.read(path).contains("contents: write")
+                    && !Set.of(
+                                    RepositoryRules.PREVIEW_PUBLISH_WORKFLOW,
+                                    RepositoryRules.ZAP_PUBLISH_WORKFLOW)
+                            .contains(relative)) {
+                errors.add("only trusted publication workflows may grant contents:write: "
+                        + relative);
             }
         }
     }
