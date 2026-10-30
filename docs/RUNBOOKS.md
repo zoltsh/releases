@@ -10,8 +10,9 @@ Use these procedures when a release fails or release authority may be compromise
 > deployment IDs before changing anything.
 
 > [!IMPORTANT]
-> Zap and preview publication use immutable GitHub Releases plus signed metadata in
-> `zolt-dist`. Add the real owner and incident-contact details before enabling stable.
+> Release maintainers receive private incident reports through
+> [GitHub private vulnerability reporting](https://github.com/zoltsh/releases/security/advisories/new).
+> Preserve the report and release evidence while following the procedures below.
 
 ## First response
 
@@ -21,7 +22,7 @@ Use these procedures when a release fails or release authority may be compromise
 | Preview publication fails | Stop before changing the channel | [Preview failure](#preview-failure) |
 | Stable publication fails | Stop publication and preserve approval evidence | [Stable failure](#stable-failure) |
 | Channel credential may be exposed | Disable that channel | [Channel credential exposure](#channel-credential-exposure) |
-| Offline root key may be exposed | Stop every publication path | [Offline root key exposure](#offline-root-key-exposure) |
+| Embedded release trust may be compromised | Stop affected publication paths | [Signing trust compromise](#signing-trust-compromise) |
 | Release repository may be compromised | Freeze the repository and revoke credentials | [Repository compromise](#repository-compromise) |
 
 ## Zap failure
@@ -65,35 +66,54 @@ Use these procedures when a release fails or release authority may be compromise
 2. Keep the source tag, GitHub draft or release ID, file IDs, checksums, approval, and
    external deployment IDs.
 3. Do not rebuild the same version after approval.
-4. If publication stopped halfway, continue from the recorded and already-verified
-   files.
-5. If a bad stable release is current, publish a new signed channel file with a higher
-   sequence number that points to a verified older release.
-6. Mark the bad version withdrawn or unsupported. Do not erase its evidence.
+4. If publication stopped halfway, retry the same `stable publish` workflow with the
+   same controller tag and `candidate_run_id`. It verifies and reuses the exact
+   immutable release and signed files. If public metadata differs from both the
+   recorded prior state and the intended publication, stop and investigate that
+   difference; do not bypass the prior-state checks.
+5. Users with an installer-managed installation can run `zolt self versions`, then
+   `zolt self rollback` to select the recorded previous installed version, or
+   `zolt self use VERSION` to select another installed version. Confirm with
+   `zolt --version`. This changes only the local installation, not the public channel.
+   Avoid `zolt self update` while the channel still points to the bad version.
+6. Fix the defect and publish a higher patch version through the complete source CI,
+   four-target candidate, approval, and canary flow. The normal stable publisher
+   rejects channel downgrades. There is no stable channel rollback workflow or
+   manifest sequence field. For the first stable release, a previous stable version
+   may not exist, so use a tested fix-forward patch.
+7. Mark the bad version withdrawn or unsupported. Do not erase its evidence or replace
+   its immutable files.
 
 ## Channel credential exposure
 
 1. Disable that channel's workflow and environment.
-2. Revoke its storage credential and signing key. Because the Spaces credential can
-   replace `install.sh`, treat curl installations during the exposure window as
+2. Revoke exposed storage credentials and remove exposed signing secrets from
+   publication environments. Existing clients still trust their bundled public keys;
+   removing a secret does not revoke that client trust. Because the Spaces credential
+   can replace `install.sh`, treat curl installations during the exposure window as
    potentially compromised even when signed metadata stayed valid.
 3. Preserve object-access logs and compare the public installer with the reviewed
    `scripts/install-bootstrap` bytes before restoring it with a new credential.
 4. Check whether the other channels were reachable.
-5. Use the offline root process to authorize a replacement channel key.
-6. Publish a new key-authority document and channel file, both with higher sequence or
-   generation numbers.
-7. Check that existing clients can move to the new key.
+5. If a signing key was exposed, prepare reviewed controller and Zolt source changes
+   that replace the affected bundled public key. Plan how existing clients receive
+   that trust change through a verified recovery release or another trusted path.
+   The current format has no online key-authority document or sequence field.
+6. Restore the installer bootstrap only from reviewed bytes with an exact immutable
+   installer URL and SHA-256. If signing trust changed, verify that its client and the
+   controller trust the replacement key before signing new metadata or resuming
+   publication.
+7. Verify installation and update recovery with the changed trust. Do not assume
+   clients will accept a replacement key merely because an environment secret changed.
 8. Publish an incident report appropriate to the impact.
 
-## Offline root key exposure
+## Signing trust compromise
 
-Stop all publication. This breaks the base of client trust and may require a new Zolt
-release plus recovery instructions delivered through another trusted path.
-
-The root private key must never be stored in GitHub, DigitalOcean, an ordinary cloud
-drive, or an unprotected maintainer laptop. Keep it hardware protected with a separate
-offline backup.
+Stop affected publication paths. Current clients and the controller trust public keys
+bundled in reviewed code; there is no implemented offline-root authorization or online
+revocation mechanism. Recovery requires reviewed trust changes and a verified delivery
+path to affected clients, following [channel credential exposure](#channel-credential-exposure).
+Do not resume publication solely because a replacement private key has been uploaded.
 
 ## Repository compromise
 

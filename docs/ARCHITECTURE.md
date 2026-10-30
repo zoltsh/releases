@@ -533,7 +533,7 @@ Complete and publish:
 - [ ] Release and rollback instructions
 - [ ] Key IDs and rotation instructions
 - [ ] A practiced key-rotation exercise
-- [ ] A practiced bad-release rollback
+- [ ] A practiced client rollback and fix-forward stable release procedure
 - [ ] Mirror, proxy, custom CA, and offline verification instructions
 - [ ] A macOS signing and notarization policy
 - [ ] Vulnerability response and release-withdrawal rules
@@ -553,4 +553,4 @@ Complete and publish:
 - Source maintainers are not automatically release authorities.
 - Personal tokens are not release infrastructure.
 - Organization owners stay few and well protected.
-- The offline root key never enters normal CI.
+- Signing private keys stay in their dedicated protected publication environments.
