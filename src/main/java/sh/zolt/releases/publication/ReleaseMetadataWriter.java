@@ -24,6 +24,7 @@ final class ReleaseMetadataWriter {
             "(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)";
     private static final Pattern ZAP_VERSION = Pattern.compile(
             "^" + CORE_VERSION + "-zap\\.[0-9]{8}\\.[0-9a-f]{12}$");
+    private static final Pattern STABLE_VERSION = Pattern.compile("^" + CORE_VERSION + "$");
     private static final Pattern PREVIEW_VERSION = Pattern.compile(
             "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
                     + "-(alpha|beta|rc)\\.(0|[1-9][0-9]*)$");
@@ -48,7 +49,7 @@ final class ReleaseMetadataWriter {
             throw new IllegalArgumentException(
                     "current channel and release index must either both exist or both be absent");
         }
-        if (previousChannel == null && release.channel() != ReleaseChannel.PREVIEW) {
+        if (previousChannel == null && release.channel() == ReleaseChannel.ZAP) {
             throw new IllegalArgumentException(
                     release.channel().id() + " publication requires current signed metadata");
         }
@@ -298,7 +299,7 @@ final class ReleaseMetadataWriter {
         return switch (channel) {
             case ZAP -> ZAP_VERSION;
             case PREVIEW -> PREVIEW_VERSION;
-            case STABLE -> throw new IllegalArgumentException("stable publication is not enabled");
+            case STABLE -> STABLE_VERSION;
         };
     }
 
@@ -318,12 +319,29 @@ final class ReleaseMetadataWriter {
             throw new IllegalArgumentException(
                     "new preview version must be greater than the current preview version");
         }
+        if (release.channel() == ReleaseChannel.STABLE
+                && compareStable(release.version(), previousVersion) <= 0) {
+            throw new IllegalArgumentException(
+                    "new stable version must be greater than the current stable version");
+        }
         String previousCreatedAt = previousChannel.path("createdAt").asText();
         if (!Instant.parse(release.createdAt()).isAfter(Instant.parse(previousCreatedAt))) {
             throw new IllegalArgumentException(
                     "new " + release.channel().id()
                             + " candidate must be newer than the current channel metadata");
         }
+    }
+
+    private static int compareStable(String left, String right) {
+        String[] leftParts = left.split("\\.");
+        String[] rightParts = right.split("\\.");
+        for (int index = 0; index < 3; index++) {
+            int comparison = new BigInteger(leftParts[index]).compareTo(new BigInteger(rightParts[index]));
+            if (comparison != 0) {
+                return comparison;
+            }
+        }
+        return 0;
     }
 
     private static int comparePreview(String left, String right) {

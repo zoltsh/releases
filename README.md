@@ -44,7 +44,7 @@ archive, and records the signed channel used by `zolt self update`.
 
 | Channel | Best for | Origin |
 | :--- | :--- | :--- |
-| `stable` | Recommended releases; not enabled yet | Signed pointer at `dist.zolt.sh` |
+| `stable` | Recommended releases | Signed pointer at `dist.zolt.sh` |
 | `preview` | Protected alpha, beta, and release candidates | Signed pointer at `dist.zolt.sh` |
 | `zap` | The latest healthy build from `main` | [Signed pointer at `dist.zolt.sh`](https://dist.zolt.sh/channels/zap.json) |
 
@@ -68,7 +68,9 @@ Release files for every channel live in immutable
 small stable bootstrap plus signed channel and release-index files that tell clients
 which GitHub Release is current. Preview publication is enabled through a protected
 source tag, isolated signing, a secretless immutable-release canary, and separate
-metadata promotion. Stable publication remains disabled.
+metadata promotion. Stable uses signed final tags, protected publication approvals,
+isolated signing, and the same immutable canary. See
+[stable setup](./docs/SETUP.md#11-publish-a-stable-release).
 
 ## About this repository
 

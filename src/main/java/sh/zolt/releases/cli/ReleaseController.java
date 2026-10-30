@@ -15,6 +15,8 @@ public final class ReleaseController {
     private static final Map<String, ReleaseCommand> COMMANDS = Map.of(
             CliConstants.COMPUTE_ZAP_VERSION, new ComputeZapVersionCommand(),
             CliConstants.PREPARE_PREVIEW_PUBLICATION, new PreparePreviewPublicationCommand(),
+            CliConstants.PREPARE_STABLE_PUBLICATION,
+                    new PreparePreviewPublicationCommand(sh.zolt.releases.policy.ReleaseChannel.STABLE),
             CliConstants.PREPARE_ZAP_PUBLICATION, new PrepareZapPublicationCommand(),
             CliConstants.SIGN_RELEASE_FILE, new SignReleaseFileCommand(),
             CliConstants.VALIDATE_INTENT, new ValidateIntentCommand(),

@@ -8,8 +8,8 @@ giving candidate code access to publication credentials.
 
 > [!NOTE]
 > Automatic zap publication and protected preview publication store immutable files in
-> GitHub Releases and move signed metadata at `dist.zolt.sh` last. Stable publication
-> remains disabled.
+> GitHub Releases and move signed metadata at `dist.zolt.sh` last. Stable retains
+> protected tag-only publication and reviewer gates.
 
 ## Contents
 
@@ -66,8 +66,8 @@ preview or stable release access.
 | `preview` | Alpha, beta, and release-candidate builds | Protected prerelease tag | Create the tag |
 | `stable` | Recommended release | Protected final tag | Create the tag and approve publication |
 
-Zap stays automatic. Preview requires a deliberate tag. Stable adds one protected
-approval.
+Zap stays automatic. Preview requires a deliberate tag. Stable adds protected
+signing and promotion approvals.
 
 All three channels use GitHub Releases for downloadable files. Their signed metadata
 uses one public origin:
@@ -77,8 +77,8 @@ https://dist.zolt.sh
 ```
 
 Preview is enabled through a protected, signed prerelease tag and a reviewed four-target
-publication lane. Stable remains disabled until its build, signing, and approval path is
-completed and reviewed.
+publication lane. Stable uses a signed final source tag and an independently verified
+candidate, then requires protected controller-tag publication approvals.
 
 The public installer command uses a stable `dist.zolt.sh` bootstrap. Its reviewed bytes
 pin an exact immutable GitHub Release installer and SHA-256; that immutable installer
@@ -107,7 +107,7 @@ DigitalOcean object versioning is optional. Each GitHub Release contains immutab
 copies of the signed channel and index produced for that publication, so operators can
 reconstruct channel state after an accidental metadata overwrite. Preview uses the same
 storage split and changes its channel only after its immutable release passes a
-secretless canary. Stable will use it after stable publication is enabled.
+secretless canary. Stable uses it before metadata promotion.
 
 ## Roles and access
 
@@ -132,7 +132,7 @@ Human work per operation:
 | Zap after merge | None |
 | Zap recovery | One protected-environment approval |
 | Preview | Create a protected prerelease tag |
-| Stable | One protected-environment approval |
+| Stable | Protected signing and promotion approvals |
 | Release-controller change | Solo owner PR plus required CI; add independent review when staffed |
 | Root or stable-key rotation | Follow the security procedure |
 

@@ -352,6 +352,15 @@ final class RepositoryPolicyCheck implements RepositoryCheck {
                 "channel-stable deployments must use protected stable tags",
                 errors);
 
+        TomlTable stableSigningEnvironment = table(environments, "channel_stable_signing", errors);
+        for (TomlTable stableGate : List.of(stableEnvironment, stableSigningEnvironment)) {
+            requireLong(stableGate, "reviewers", 1L, "stable publication must retain one required reviewer", errors);
+            requireBoolean(stableGate, "prevent_self_review", true, "stable must prevent self-review", errors);
+            requireBoolean(stableGate, "admin_bypass", false, "stable must disallow administrator bypass", errors);
+            requireString(stableGate, "deployment_ref_type", "tag", "stable environments must use a tag policy", errors);
+            requireString(stableGate, "deployment_ref_pattern", "zolt-v*", "stable environments must use protected stable tags", errors);
+        }
+
         TomlTable tagRules = table(settings, "tag_rules", errors);
         if (!new TreeSet<>(tagRules.keySet()).equals(new TreeSet<>(channelNames))) {
             errors.add("repository settings must define stable, preview, and zap tag rules");

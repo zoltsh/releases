@@ -119,18 +119,19 @@ They must not come from workflow input or the candidate commit.
 | `channel-zap-recovery` | branch `main` | 1 | Operator-approved zap rollback |
 | `channel-preview-signing` | branch `main` | 0 | Sign metadata and create the immutable preview |
 | `channel-preview` | branch `main` | 0 | Promote already-signed preview metadata after canary |
-| `channel-stable` | tag `zolt-v*` | 1 | Stable publication after approval |
+| `channel-stable-signing` | tag `zolt-v*` | 1 | Sign exact stable candidates and publish immutable assets |
+| `channel-stable` | tag `zolt-v*` | 1 | Promote stable metadata and bootstrap after canary |
 
 Set `ZOLT_RECOVERY_REVIEWER` before running the bootstrap when the authenticated GitHub
 owner should not be the recovery reviewer. The bootstrap requires that one user,
 prevents self-review, and disables administrator bypass for `channel-zap-recovery`.
-For `channel-stable`, prevent self-review and disable administrator bypass where
-available. The bootstrap replaces each environment's deployment rules with the single
+For both stable environments, require a reviewer, prevent self-review, and disable
+administrator bypass. The bootstrap replaces each environment's deployment rules with the single
 ref shown above; a workflow from any other ref cannot receive that environment's
 secrets.
 
 Zap and preview have reviewed publishers and are enabled in `policy/channels.toml`.
-Stable remains disabled. Preview deliberately splits authority: the signing environment
+Stable and preview split authority: the signing environment
 has no Spaces credential, and the promotion environment has no signing key.
 
 ## 6. Connect `zoltsh/zolt`
@@ -303,7 +304,7 @@ https://dist.zolt.sh/releases/zap.json
 https://dist.zolt.sh/releases/zap.json.sig
 ```
 
-Do not turn stable on by copying the zap workflow and changing its channel name.
+Stable reuses the tagged preview flow with dedicated keys, tag-only environments, final-version validation, and protected approval gates.
 
 ## 10. Verify the configuration
 
@@ -326,7 +327,61 @@ Before any public release:
 - [ ] `channel-preview-signing` has only the matching preview Ed25519 private key.
 - [ ] `channel-preview` has only the narrow `zolt-dist` Spaces key.
 - [ ] No release archive is uploaded to `zolt-dist`.
-- [ ] `https://dist.zolt.sh/install.sh` matches `scripts/install-bootstrap` exactly.
+- [ ] `https://dist.zolt.sh/install.sh` passes `scripts/verify-installer-bootstrap` (baseline or exact stable pin).
 - [ ] The live zap channel and release index verify with `zolt-release-2026`.
 - [ ] Preview intent validation succeeds without creating a tag or publishing files.
 - [ ] `scripts/check` passes.
+
+## 11. Publish a stable release
+
+Stable builds four native distributions from an exact signed final source tag such as
+`v1.0.0`: Linux x64/arm64 and macOS x64/arm64. Windows is unsupported. Source CI must
+pass on `main`, including `stable Java lifecycle` with experimental commands disabled.
+The candidate and publisher independently verify that exact CI run, GitHub's source-tag
+signature, the tag target, and main ancestry. They never rebuild candidates after approval.
+
+Configure the source's final tags with `source-integration/configure-stable-tag-rules`.
+It restricts final-tag creation to the selected maintainer and forbids update/deletion
+for everyone, leaving `main` unchanged. The source `dispatch-stable.yml` invokes
+controller `stable.yml` on `main`, passing `source_repository`, `source_sha`, and
+`source_tag`. Manual candidate dispatch accepts the same three inputs.
+
+After candidate review, create protected controller tag `zolt-v1.0.0` at the exact
+controller commit recorded by the candidate. This is a lightweight immutable asset tag;
+the source `v1.0.0` is the signed annotated source identity. Dispatch `stable-publish.yml`
+from that controller tag with `candidate_run_id` set to the successful candidate run.
+With self-review prevention, the publisher initiator must differ from the approving
+reviewer. Use the source dispatcher GitHub App to start the controller publication,
+then approve as the trusted maintainer; do not disable this gate for a solo owner.
+
+The publisher verifies candidate repository, workflow, success, main branch, controller
+commit, and final version against the current protected tag before using its files.
+
+Both dedicated stable environments allow only controller tags `zolt-v*`, require one
+trusted reviewer, prevent self-review, and disallow administrator bypass. Candidate
+builds use neither environment. The signing job independently checks that its required
+reviewer gate exists before any signature or GitHub publication.
+
+Provision only these secret names in the indicated environments:
+
+| Environment | Secret | Representation |
+| --- | --- | --- |
+| `channel-stable-signing` | `ZOLT_RELEASE_ED25519_PRIVATE_KEY` | Unencrypted Ed25519 PKCS#8 PEM matching bundled `zolt-stable-2026` public key |
+| `channel-stable` | `DO_SPACES_ACCESS_KEY_ID` | Dedicated narrow `zolt-dist` credential |
+| `channel-stable` | `DO_SPACES_SECRET_ACCESS_KEY` | Matching Spaces secret |
+
+Never reuse preview/zap private keys or credentials for stable. The stable public half
+is Base64 X.509 DER in `ReleaseConstants.STABLE_SIGNING_PUBLIC_KEY` and the source
+client's `ReleaseTrustedKeys`; private key values must not enter commits or logs.
+
+`stable publish` waits for protected signing approval. It rechecks every file identity
+and all source trust evidence, signs stable metadata, and publishes immutable GitHub
+Release `zolt-v1.0.0` as a normal latest release. A separate job installs and executes
+the immutable release without publication credentials. Metadata promotion then waits
+for its protected approval, rechecks signed immutable bytes and prior channel state,
+and moves stable metadata with compare-and-swap. It publishes a bootstrap pinned to
+the exact immutable installer and SHA-256. The bootstrap defaults to stable while
+respecting explicit `ZOLT_INSTALL_CHANNEL=zap`. Stable, zap, and zap recovery share one
+publication concurrency group; later zap publication preserves the reviewed stable
+bootstrap. Drain older controller publication runs before the first stable promotion.
+A final job exercises the public installer without publication authority.

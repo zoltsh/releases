@@ -20,9 +20,7 @@ final class ReleaseFileSignerTest {
     void selectsDistinctEnabledChannelKeys() {
         assertDoesNotThrow(() -> new ReleaseFileSigner(ReleaseChannel.ZAP));
         assertDoesNotThrow(() -> new ReleaseFileSigner(ReleaseChannel.PREVIEW));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ReleaseFileSigner(ReleaseChannel.STABLE));
+        assertDoesNotThrow(() -> new ReleaseFileSigner(ReleaseChannel.STABLE));
     }
 
     @Test

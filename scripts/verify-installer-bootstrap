@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Shell expressions in bootstrap templates are intentionally literal.
+# shellcheck disable=SC2016
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+if [[ "$#" -ne 1 || ! -f "$1" ]]; then
+    printf 'usage: scripts/verify-installer-bootstrap <downloaded-bootstrap>\n' >&2
+    exit 2
+fi
+input="$1"
+sh -n "$input"
+if cmp -s scripts/install-bootstrap "$input"; then
+    exit 0
+fi
+# Stable bootstraps differ only in their immutable installer pin and channel default.
+url="$(sed -n "s/^BOOTSTRAP_INSTALLER_URL='\\([^']*\\)'$/\\1/p" "$input")"
+digest="$(sed -n "s/^BOOTSTRAP_INSTALLER_SHA256='\\([^']*\\)'$/\\1/p" "$input")"
+[[ "$url" =~ ^https://github\.com/zoltsh/releases/releases/download/zolt-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)/install\.sh$ ]]
+[[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+[[ "$(grep -Fxc 'export ZOLT_INSTALL_CHANNEL="${ZOLT_INSTALL_CHANNEL:-stable}"' "$input")" -eq 1 ]]
+base_url="$(sed -n "s/^BOOTSTRAP_INSTALLER_URL='\\([^']*\\)'$/\\1/p" scripts/install-bootstrap)"
+base_digest="$(sed -n "s/^BOOTSTRAP_INSTALLER_SHA256='\\([^']*\\)'$/\\1/p" scripts/install-bootstrap)"
+normalized="$(mktemp)"
+trap 'rm -f "$normalized"' EXIT
+sed \
+    -e "s|^BOOTSTRAP_INSTALLER_URL=.*|BOOTSTRAP_INSTALLER_URL='$base_url'|" \
+    -e "s|^BOOTSTRAP_INSTALLER_SHA256=.*|BOOTSTRAP_INSTALLER_SHA256='$base_digest'|" \
+    -e '/^export ZOLT_INSTALL_CHANNEL="${ZOLT_INSTALL_CHANNEL:-stable}"$/d' \
+    "$input" > "$normalized"
+cmp -s scripts/install-bootstrap "$normalized"

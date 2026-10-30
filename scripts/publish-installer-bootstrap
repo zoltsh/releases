@@ -1,11 +1,26 @@
 #!/usr/bin/env bash
+# Shell expressions in bootstrap templates are intentionally literal.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-if [[ "${1:-}" != "--channel" || "${2:-}" != "zap" || "$#" -ne 2 ]]; then
-    printf 'usage: scripts/publish-installer-bootstrap --channel zap\n' >&2
+channel=""
+publication=""
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --channel) channel="${2:?missing channel}"; shift 2 ;;
+        --publication) publication="${2:?missing publication}"; shift 2 ;;
+        *) printf 'error: unknown argument %s\n' "$1" >&2; exit 2 ;;
+    esac
+done
+if [[ "$channel" != zap && "$channel" != stable ]]; then
+    printf 'usage: scripts/publish-installer-bootstrap --channel <zap|stable> [--publication <directory>]\n' >&2
+    exit 2
+fi
+if [[ "$channel" == stable && -z "$publication" ]]; then
+    printf 'error: stable bootstrap requires the verified publication directory\n' >&2
     exit 2
 fi
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
@@ -19,7 +34,26 @@ if ! command -v "$curl_cli" >/dev/null 2>&1; then
     exit 2
 fi
 
+temporary="$(mktemp -d)"
+trap 'rm -rf "$temporary"' EXIT
 bootstrap="scripts/install-bootstrap"
+if [[ "$channel" == stable ]]; then
+    version="$(jq -er '.version' "$publication/channels/stable.json")"
+    [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+    installer="$publication/artifacts/stable/$version/install.sh"
+    test -f "$installer"
+    installer_digest="$(sha256sum "$installer" | awk '{ print $1 }')"
+    installer_url="https://github.com/zoltsh/releases/releases/download/zolt-v$version/install.sh"
+    bootstrap="$temporary/install-bootstrap"
+    sed \
+        -e "s|^BOOTSTRAP_INSTALLER_URL=.*|BOOTSTRAP_INSTALLER_URL='$installer_url'|" \
+        -e "s|^BOOTSTRAP_INSTALLER_SHA256=.*|BOOTSTRAP_INSTALLER_SHA256='$installer_digest'|" \
+        -e '/^sh "\$installer" "\$@"$/i\
+export ZOLT_INSTALL_CHANNEL="${ZOLT_INSTALL_CHANNEL:-stable}"' \
+        scripts/install-bootstrap > "$bootstrap"
+    chmod +x "$bootstrap"
+    scripts/verify-installer-bootstrap "$bootstrap"
+fi
 if [[ ! -x "$bootstrap" || "$(head -n 1 "$bootstrap")" != '#!/bin/sh' ]]; then
     printf 'error: installer bootstrap must be an executable POSIX shell script\n' >&2
     exit 1
@@ -44,6 +78,23 @@ spaces_curl() {
         "$@"
 }
 
+# Zap must never replace the stable default after the first stable release.
+if [[ "$channel" == zap ]]; then
+    current="$temporary/current-bootstrap"
+    status="$(spaces_curl --output "$current" --write-out '%{http_code}' "$url" || true)"
+    case "$status" in
+        200)
+            if scripts/verify-installer-bootstrap "$current" \
+                && grep -Fxq 'export ZOLT_INSTALL_CHANNEL="${ZOLT_INSTALL_CHANNEL:-stable}"' "$current"; then
+                printf 'Preserving current stable installer bootstrap\n'
+                exit 0
+            fi
+            ;;
+        404) ;;
+        *) printf 'error: could not inspect current installer bootstrap (HTTP %s)\n' "$status" >&2; exit 1 ;;
+    esac
+fi
+
 printf 'Writing stable installer bootstrap to s3://%s/%s\n' "$bucket" "$key"
 spaces_curl \
     --request PUT \
@@ -54,8 +105,7 @@ spaces_curl \
     --output /dev/null \
     "$url"
 
-downloaded="$(mktemp)"
-trap 'rm -f "$downloaded"' EXIT
+downloaded="$temporary/downloaded"
 spaces_curl --output "$downloaded" "$url"
 if ! cmp -s "$bootstrap" "$downloaded"; then
     printf 'error: remote installer bootstrap differs from reviewed repository bytes\n' >&2

@@ -289,6 +289,7 @@ configure_recovery_protection
 configure_environment_ref channel-preview branch main
 configure_environment_ref channel-preview-signing branch main
 configure_environment_ref channel-stable tag 'zolt-v*'
+configure_environment_ref channel-stable-signing tag 'zolt-v*'
 
 immutable_enabled="$(gh api "repos/${FULL_REPO}/immutable-releases" \
     -H "Accept: application/vnd.github+json" \
@@ -312,7 +313,7 @@ Still required in GitHub:
   1. Keep the solo owner in release-engineers; add release-approvers and maintainers only as trusted people join.
   2. Give normal maintainers read-only access to this repository when they join.
   3. Keep release-engineers listed for sensitive paths through CODEOWNERS; solo mode does not gate merging on that review.
-  4. Add one trusted reviewer to channel-stable and prevent self-review before stable publication.
+  4. Add one trusted reviewer to channel-stable and channel-stable-signing and prevent self-review before stable publication.
   5. Keep channel-zap and channel-preview at zero reviewers initially.
   6. Keep channel-zap-recovery approval-gated; the bootstrap configures ${RECOVERY_REVIEWER} and prevents self-review.
   7. Confirm only reviewed publication workflows grant contents:write and release tags cannot move or be deleted.

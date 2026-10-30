@@ -80,6 +80,8 @@ final class RepositoryRules {
             "scripts/publish-github-release",
             "scripts/publish-installer-bootstrap",
             "scripts/publish-release-test",
+            "scripts/verify-installer-bootstrap",
+            "source-integration/configure-stable-tag-rules",
             "source-integration/CODEOWNERS",
             "source-integration/configure-preview-tag-rules",
             "source-integration/dispatch-preview.yml",
@@ -142,15 +144,19 @@ final class RepositoryRules {
             ".can_admins_bypass == false",
             "configure_environment_ref channel-preview branch main",
             "configure_environment_ref channel-preview-signing branch main",
-            "configure_environment_ref channel-stable tag 'zolt-v*'");
+            "configure_environment_ref channel-stable tag 'zolt-v*'",
+            "configure_environment_ref channel-stable-signing tag 'zolt-v*'");
     static final List<String> TRUSTED_CONTROLLER_WORKFLOWS = List.of(
             ".github/workflows/preview.yml",
             ".github/workflows/preview-candidate.yml",
             ".github/workflows/preview-publish.yml",
             ".github/workflows/stable.yml",
+            ".github/workflows/stable-publish.yml",
             ".github/workflows/zap-candidate.yml",
             ".github/workflows/zap-publish.yml",
             ".github/workflows/zap-recover.yml");
+    static final String STABLE_CANDIDATE_WORKFLOW = ".github/workflows/stable.yml";
+    static final String STABLE_PUBLISH_WORKFLOW = ".github/workflows/stable-publish.yml";
     static final String ZAP_CANDIDATE_WORKFLOW = ".github/workflows/zap-candidate.yml";
     static final String PREVIEW_CANDIDATE_WORKFLOW =
             ".github/workflows/preview-candidate.yml";
@@ -238,11 +244,11 @@ final class RepositoryRules {
             "scripts/publish-installer-bootstrap",
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json",
-            "cmp -s scripts/install-bootstrap out/public-installer.sh",
+            "scripts/verify-installer-bootstrap out/public-installer.sh",
             "\n  post-publication-smoke:\n",
             "needs: publish",
             "permissions:\n      contents: read",
-            "ZOLT_INSTALL_ROOT=\"$install_root\" sh public-installer.sh");
+            "ZOLT_INSTALL_ROOT=\"$install_root\" ZOLT_INSTALL_CHANNEL=zap sh public-installer.sh");
     static final List<String> FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS = List.of(
             "scripts/zap-distribution",
             "scripts/publish-zap",
@@ -253,7 +259,7 @@ final class RepositoryRules {
             "workflow_dispatch:",
             "environment: channel-zap-recovery",
             "permissions:\n  contents: read",
-            "concurrency:\n  group: zap-publication\n  cancel-in-progress: false",
+            "concurrency:\n  group: zolt-distribution-publication\n  cancel-in-progress: false",
             "gh release view \"$RELEASE_TAG\"",
             "gh release download \"$RELEASE_TAG\"",
             ".draft == false and .prerelease == true and .immutable == true",
@@ -261,11 +267,11 @@ final class RepositoryRules {
             "scripts/publish-installer-bootstrap",
             "scripts/publish-channel-metadata",
             "--expected-current-channel current/channels/zap.json",
-            "cmp -s scripts/install-bootstrap out/public-installer.sh",
+            "scripts/verify-installer-bootstrap out/public-installer.sh",
             "\n  post-publication-smoke:\n",
             "needs: recover",
             "permissions:\n      contents: read",
-            "ZOLT_INSTALL_ROOT=\"$install_root\" sh public-installer.sh",
+            "ZOLT_INSTALL_ROOT=\"$install_root\" ZOLT_INSTALL_CHANNEL=zap sh public-installer.sh",
             "Verify public zap recovery");
     static final List<String> FORBIDDEN_RECOVER_WORKFLOW_FRAGMENTS = List.of(
             "ZOLT_RELEASE_ED25519_PRIVATE_KEY",
