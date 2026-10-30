@@ -228,6 +228,14 @@ jobs:
         working-directory: source
         run: scripts/zap-distribution --target "$ZOLT_RELEASE_TARGET"
 
+      - name: Exercise exact native candidate lifecycle
+        timeout-minutes: 15
+        working-directory: source
+        run: |
+          scripts/smoke-native-candidate \
+              "apps/zolt/target/release/stable/$ZOLT_RELEASE_VERSION/zolt-$ZOLT_RELEASE_VERSION-$ZOLT_RELEASE_TARGET.tar.gz" \
+              "$ZOLT_RELEASE_VERSION"
+
       - name: Upload candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

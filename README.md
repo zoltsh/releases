@@ -52,6 +52,12 @@ archive, and records the signed channel used by `zolt self update`.
 > Production builds should pin an exact version and checksum instead of following a
 > channel.
 
+Stable candidates are qualified on Ubuntu 24.04 with glibc and macOS 15, each
+on x64 and arm64. Before upload, every native archive must execute Java build,
+JUnit, packaging, recompilation, failure recovery, and a real GraalVM native
+application. Older OS versions and Linux musl distributions are outside this
+qualification matrix.
+
 ## What comes with a release
 
 | File | Purpose |
