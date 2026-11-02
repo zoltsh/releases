@@ -14,6 +14,10 @@ public final class PreparePreviewPublicationCommand implements ReleaseCommand {
         this(new PreviewPublicationPreparer());
     }
 
+    public PreparePreviewPublicationCommand(sh.zolt.releases.policy.ReleaseChannel channel) {
+        this(new PreviewPublicationPreparer(channel));
+    }
+
     PreparePreviewPublicationCommand(PreviewPublicationPreparer preparer) {
         this.preparer = preparer;
     }

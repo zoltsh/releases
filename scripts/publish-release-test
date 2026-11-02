@@ -489,4 +489,17 @@ fi
 grep -F 'expected preview metadata to be absent at channels/preview.json' \
     "$temporary/preview-present.log" >/dev/null
 
+scripts/publish-installer-bootstrap --channel stable --publication "$stable_publication"
+cp "$spaces_store/zolt-dist/install.sh" "$temporary/stable-bootstrap"
+scripts/verify-installer-bootstrap "$temporary/stable-bootstrap"
+grep -Fx 'export ZOLT_INSTALL_CHANNEL="${ZOLT_INSTALL_CHANNEL:-stable}"' "$temporary/stable-bootstrap" >/dev/null
+grep -F "zolt-v$stable_version/install.sh" "$temporary/stable-bootstrap" >/dev/null
+scripts/publish-installer-bootstrap --channel zap
+cmp "$temporary/stable-bootstrap" "$spaces_store/zolt-dist/install.sh"
+printf '\nprintf injected-code\n' >> "$temporary/stable-bootstrap"
+if scripts/verify-installer-bootstrap "$temporary/stable-bootstrap"; then
+    printf 'error: modified stable bootstrap was accepted\n' >&2
+    exit 1
+fi
+
 printf 'GitHub Release, installer bootstrap, and channel publisher tests passed\n'

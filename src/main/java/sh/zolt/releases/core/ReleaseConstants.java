@@ -17,6 +17,9 @@ public final class ReleaseConstants {
     public static final String PREVIEW_SIGNING_KEY_ID = "zolt-preview-2026";
     public static final String PREVIEW_SIGNING_PUBLIC_KEY =
             "MCowBQYDK2VwAyEAFGTBb1bricNd6JSb0Gi6axPoZNThgr99rpVaVe7fxoI=";
+    public static final String STABLE_SIGNING_KEY_ID = "zolt-stable-2026";
+    public static final String STABLE_SIGNING_PUBLIC_KEY =
+            "MCowBQYDK2VwAyEArEqJVwCSx3eNB8LAc6Pi1vmJMw/MbW6dUEX3K2sKK8M=";
     public static final int RELEASE_RECORD_SCHEMA_VERSION = 1;
     public static final String CANDIDATE_STATE = "candidate";
     public static final List<String> RELEASE_TARGETS =

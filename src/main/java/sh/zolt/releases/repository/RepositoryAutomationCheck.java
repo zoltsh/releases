@@ -21,7 +21,65 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
         validatePublishWorkflow(root, errors);
         validatePreviewPublishWorkflow(root, errors);
         validateRecoveryWorkflow(root, errors);
+        validateStableWorkflows(root, errors);
         validatePublicationBackends(root, errors);
+    }
+
+    private static void validateStableWorkflows(Path root, List<String> errors) {
+        Path candidatePath = root.resolve(RepositoryRules.STABLE_CANDIDATE_WORKFLOW);
+        Path publisherPath = root.resolve(RepositoryRules.STABLE_PUBLISH_WORKFLOW);
+        if (!Files.isRegularFile(candidatePath) || !Files.isRegularFile(publisherPath)) {
+            errors.add("stable requires candidate and publish workflows");
+            return;
+        }
+        String candidate = RepositoryFiles.read(candidatePath);
+        String publisher = RepositoryFiles.read(publisherPath);
+        for (String fragment : RepositoryRules.PREVIEW_CANDIDATE_WORKFLOW_FRAGMENTS) {
+            if (!candidate.contains(fragment.replace("preview", "stable"))) {
+                errors.add("stable candidate workflow is missing required contract: " + fragment);
+            }
+        }
+        for (String fragment : List.of(
+                "workflow_dispatch:", "candidate_run_id:",
+                "if: startsWith(github.ref, 'refs/tags/zolt-v')",
+                ".head_branch == \"main\"", ".head_sha == $sha",
+                "environment: channel-stable-signing", "environment: channel-stable",
+                "prepare-stable-publication", "sign-release-file --channel stable",
+                "verify-release-file --channel stable", "scripts/publish-github-release",
+                "scripts/publish-channel-metadata", "scripts/publish-installer-bootstrap --channel stable",
+                "--expect-current-absent", "isPrerelease == false",
+                "group: zolt-distribution-publication")) {
+            if (!publisher.contains(fragment)) {
+                errors.add("stable publish workflow is missing required contract: " + fragment);
+            }
+        }
+        if (candidate.contains("environment: channel-") || candidate.contains("--allow-disabled")) {
+            errors.add("stable candidate must have no publication authority or disabled-policy bypass");
+        }
+        if (!candidate.contains("stable Java lifecycle") || !publisher.contains("stable Java lifecycle")) {
+            errors.add("stable candidate and publisher must independently verify stable lifecycle CI");
+        }
+        for (String fragment : RepositoryRules.FORBIDDEN_PUBLISH_WORKFLOW_FRAGMENTS) {
+            if (publisher.contains(fragment)) {
+                errors.add("stable publisher must never execute untrusted source: " + fragment);
+            }
+        }
+        int canary = publisher.indexOf("\n  immutable-release-canary:\n");
+        int promote = publisher.indexOf("\n  promote:\n");
+        if (canary < 0 || promote <= canary) {
+            errors.add("stable publisher requires immutable canary before promotion");
+            return;
+        }
+        String signing = publisher.substring(0, canary);
+        String promotion = publisher.substring(promote);
+        if (signing.contains("DO_SPACES_") || promotion.contains("PRIVATE_KEY")) {
+            errors.add("stable signing and metadata credentials must remain isolated");
+        }
+        if (!signing.contains("required_reviewers")) {
+            errors.add("stable publisher must verify protected signing approval");
+        }
+        validateUnprivilegedJob(publisher, "\n  immutable-release-canary:\n", "\n  promote:\n", "stable immutable-release canary", errors);
+        validateUnprivilegedPostPublicationSmoke(publisher, "stable publish", errors);
     }
 
     private static void validateZoltSetup(Path root, List<String> errors) {
@@ -72,6 +130,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                     && RepositoryFiles.read(path).contains("contents: write")
                     && !Set.of(
                                     RepositoryRules.PREVIEW_PUBLISH_WORKFLOW,
+                                    RepositoryRules.STABLE_PUBLISH_WORKFLOW,
                                     RepositoryRules.ZAP_PUBLISH_WORKFLOW)
                             .contains(relative)) {
                 errors.add("only trusted publication workflows may grant contents:write: "
@@ -436,7 +495,7 @@ final class RepositoryAutomationCheck implements RepositoryCheck {
                     || !publisher.contains("--connect-timeout")
                     || !publisher.contains("--max-time")
                     || !publisher.contains("cmp -s \"$bootstrap\" \"$downloaded\"")
-                    || publisher.contains("artifacts/")
+                    || !publisher.contains("scripts/verify-installer-bootstrap")
                     || publisher.contains("s3api")) {
                 errors.add(
                         "installer bootstrap publisher must upload and verify only the reviewed install.sh with bounded curl SigV4 requests");

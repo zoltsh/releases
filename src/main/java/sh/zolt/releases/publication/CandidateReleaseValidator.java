@@ -30,6 +30,9 @@ final class CandidateReleaseValidator {
             "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)"
                     + "-(?:alpha|beta|rc)\\.(?:0|[1-9][0-9]*)$");
 
+    private static final Pattern STABLE_VERSION = Pattern.compile(
+            "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$");
+
     private final ReleaseRecordValidator releaseRecordValidator;
 
     CandidateReleaseValidator() {
@@ -136,7 +139,7 @@ final class CandidateReleaseValidator {
         return switch (channel) {
             case ZAP -> ZAP_VERSION;
             case PREVIEW -> PREVIEW_VERSION;
-            case STABLE -> throw new IllegalArgumentException("stable publication is not enabled");
+            case STABLE -> STABLE_VERSION;
         };
     }
 
@@ -155,7 +158,8 @@ final class CandidateReleaseValidator {
                     "tag",
                     "v" + version,
                     "preview release record source tag");
-            case STABLE -> throw new IllegalArgumentException("stable publication is not enabled");
+            case STABLE -> requireText(
+                    source, "tag", "v" + version, "stable release record source tag");
         }
     }
 

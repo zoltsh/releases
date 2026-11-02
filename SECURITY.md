@@ -13,11 +13,8 @@ issue.
 
 ## Report privately
 
-Private reporting must be ready before public releases are enabled:
-
-1. Enable GitHub private vulnerability reporting for `zoltsh/releases`.
-2. Configure and monitor `security@zolt.sh`.
-3. Publish confirmed response expectations here.
+Use [GitHub private vulnerability reporting](https://github.com/zoltsh/releases/security/advisories/new)
+for `zoltsh/releases`. Private reporting is enabled.
 
 Include the affected release or workflow, exact file or URL, observed behavior, and any
 relevant timestamps. Do not include private keys or live credentials in the report.
@@ -31,9 +28,12 @@ Central token, or personal access token.
 
 1. Stop that channel.
 2. Keep its workflow, audit, and storage logs.
-3. Revoke the exposed key or credential.
-4. Authorize a replacement with the offline root key.
-5. Publish a new signed channel file with a higher sequence number.
+3. Revoke exposed storage credentials and remove exposed signing secrets from
+   publication environments.
+4. For an exposed signing key, follow the [embedded-key and client recovery procedure](./docs/RUNBOOKS.md#channel-credential-exposure).
+   Current clients do not have an online key directory or revocation mechanism.
+5. Resume publication only after replacement credentials, required client trust
+   changes, and the pinned installer bootstrap have been verified.
 6. Record the incident and the releases that may be affected.
 
 The complete response procedures are in the

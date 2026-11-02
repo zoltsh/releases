@@ -14,7 +14,7 @@ metadata_backend = "s3-compatible"
 production_ci_follows_channel = false
 
 [channel.stable]
-status = "disabled"
+status = "enabled"
 default = true
 source = "protected-final-tag"
 human_gate = "protected-environment"

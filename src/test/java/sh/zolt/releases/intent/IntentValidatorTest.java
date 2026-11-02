@@ -69,7 +69,7 @@ final class IntentValidatorTest {
     }
 
     @Test
-    void allowsStableChecksWhileStableIsDisabled() {
+    void acceptsSignedFinalTagIntent() {
         ReleaseIntent intent = validate(
                 ReleaseChannel.STABLE,
                 "zoltsh/zolt",
@@ -78,7 +78,7 @@ final class IntentValidatorTest {
                 "v1.2.3",
                 true);
 
-        assertEquals("disabled", intent.policyStatus());
+        assertEquals("enabled", intent.policyStatus());
     }
 
     private static ReleaseIntent validate(

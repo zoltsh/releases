@@ -82,7 +82,7 @@ public final class ReleaseSignatureVerifier {
         return switch (channel) {
             case ZAP -> ReleaseConstants.ZAP_SIGNING_KEY_ID;
             case PREVIEW -> ReleaseConstants.PREVIEW_SIGNING_KEY_ID;
-            case STABLE -> throw new IllegalArgumentException("stable verification is not enabled");
+            case STABLE -> ReleaseConstants.STABLE_SIGNING_KEY_ID;
         };
     }
 
@@ -90,7 +90,7 @@ public final class ReleaseSignatureVerifier {
         return switch (channel) {
             case ZAP -> ReleaseConstants.ZAP_SIGNING_PUBLIC_KEY;
             case PREVIEW -> ReleaseConstants.PREVIEW_SIGNING_PUBLIC_KEY;
-            case STABLE -> throw new IllegalArgumentException("stable verification is not enabled");
+            case STABLE -> ReleaseConstants.STABLE_SIGNING_PUBLIC_KEY;
         };
     }
 }
